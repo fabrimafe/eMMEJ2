@@ -1,0 +1,229 @@
+"""
+This module is an impementation of the EM algorithm
+"""
+import regex as re
+import pandas as pd
+import numpy as np
+
+#import matplotlib.pyplot as plt
+#import matplotlib.cm as cm
+import seaborn as sns
+
+pd.set_option('display.max_columns', 200)
+
+class EMq:
+    def __init__(self, data: pd.DataFrame, 
+                initial_theta: float,
+                convergence_threshold: float,
+                window_size: int, 
+                MM_lk: float) -> float:
+        """
+        This class encapsulate all steps that is needed in order
+        to perform an Expectation Maximization algorithm
+        Args:
+            data (pd.DataFrame): the data to operate on
+            mechanism_prob (str): a column name that corespond to the probability
+                (of any kind) that represents an indel
+            initial_theta (float): initial proportion of the mechanism
+            convergence_threshold (float): a cutoff to break the main loop when 
+                riched a good enougth convergence
+        Return:
+            The value that the EM gor converged to (float)
+        """
+        self.df = data
+        self.initial_theta = initial_theta
+        self.convergence_threshold = convergence_threshold
+        self.window_size = window_size
+        self.MM_lk = MM_lk
+        self.log = pd.DataFrame(columns=['MMEJ_theta', 'NHEJ_theta', 'minus_log_likelihood'])
+        self.indel_length_dist_log = pd.DataFrame(columns=['MMEJ_indel_len_dist', 'NHEJ_indel_len_dist'])
+        # exeption handeling
+        assert (self.df['indel_len'].max() < window_size), f"Window size must be at least the window size that was used for RMdetector.pf, current window size={window_size}"
+        self.EM_main_loop(theta_a=self.initial_theta)
+
+    def plot_indel_len_dist(self,theta_a: float):
+        # x = [i for i in range(1,(self.window_size+1))]
+        # plt.plot(x, self.indel_len_dist_mmej, linestyle="-", label="MMEJ", alpha=0.6)
+        # plt.plot(x, self.indel_len_dist_nhej, linestyle="--", label="NHEJ", alpha=0.6)
+        # plt.ylim([0,0.2])
+        # plt.xlabel('Indel length')
+        # plt.ylabel('Frequency')
+        # plt.legend()
+        # plt.show()
+        
+        plt.plot(self.df['r_nMMEJ'], self.df['r_nNHEJ'], 'ko', alpha=0.2)
+        plt.plot(theta_a, 0.02, 'ro')
+        plt.plot(0.02, (1-theta_a), 'go')
+        plt.xlim([0,1])
+        plt.ylim([0,1])
+        plt.title(f'Iteration number = {self.iter}')
+        plt.xlabel('MMEJ')
+        plt.ylabel('NHEJ')
+        plt.show()
+
+
+    def update_log(self, theta_a: float) -> None:
+        LL = self.df['r_nMMEJ']*theta_a + self.df['r_nNHEJ']*(1-theta_a)
+        LL = np.log(LL)
+        LL = LL.sum()
+        LL = LL * (-1)
+        self.log.loc[self.iter, 'MMEJ_theta'] = theta_a
+        self.log.loc[self.iter, 'NHEJ_theta'] = 1 - theta_a
+        self.log.loc[self.iter, 'minus_log_likelihood'] = LL
+        self.indel_length_dist_log.loc[self.iter, 'MMEJ_indel_len_dist'] = self.indel_len_dist_mmej
+        self.indel_length_dist_log.loc[self.iter, 'NHEJ_indel_len_dist'] = self.indel_len_dist_nhej
+
+    def get_motif_pos(self,context_seq:str, 
+                    motif: str) -> float:
+        """
+        Args:
+            contex_seq (str): the context sequence
+            motif (str): the motif sequence
+            window_size (int): last position to look for the motif (we set 50)
+            
+        Returns:
+            mmej_pos (np.array): a normalized vector with all position of motifs
+        """
+        context_reg = context_seq[(round(len(context_seq)/2)):round(len(context_seq)/2+self.window_size)]
+        context_reg = context_seq[(round(len(context_seq)/2)):round((len(context_seq)/2)+self.window_size)]
+        if type(motif) == str:
+            mmej_pos = np.zeros(self.window_size)
+            mmej_motif_pos = np.array([m.end() for m in 
+                re.finditer(motif, context_reg, overlapped=True)])
+                
+            mmej_motif_pos = mmej_motif_pos[mmej_motif_pos<self.window_size]
+            # if the motif isnt in context_reg, return a 0 vector 
+            if len(mmej_motif_pos) == 0:
+                return np.zeros([self.window_size], dtype='int')
+            mmej_pos[mmej_motif_pos] = 1
+            indel_pos = mmej_pos.nonzero()[0]
+            return np.array(indel_pos)
+        else:
+            return np.ones([self.window_size], dtype='int')
+    
+    def get_L(self, motif: str,obs_len: int, indel_pos: list, L: float) -> list:
+        """
+        L here is the likelihood that we used to weigh the q
+        """
+        if type(motif) == str:
+            obs_len_freq = np.take(a=self.indel_len_dist_mmej, indices=obs_len)
+            indel_len_sum = np.take(a=self.indel_len_dist_mmej,
+                         indices=indel_pos).sum()
+            p_MMEJ = (obs_len_freq/indel_len_sum) #*L #
+        else:
+            p_MMEJ = 0
+        p_NHEJ = np.take(a = self.indel_len_dist_nhej, indices=obs_len)/self.indel_len_dist_nhej.sum()
+        p_NHEJ = p_NHEJ #*(1-L)
+        p_MMEJ_norm = p_MMEJ/(p_MMEJ+p_NHEJ)
+        p_NHEJ_norm = p_NHEJ/(p_MMEJ+p_NHEJ)
+        return [p_MMEJ_norm, p_NHEJ_norm]
+        # return [p_MMEJ, p_NHEJ]
+
+    def get_indel_length_dist(self, mechanism :str) -> float:
+        """
+        ADD DOCS HERE
+        """
+        indel_len_dist = np.array([(self.df.loc[(self.df['indel_len'] == i), mechanism].sum() /
+                    self.df.loc[:, mechanism].sum()) for i in range(1,(self.window_size+1))], dtype="float")
+        # adding some bais for regularization
+        indel_len_dist = indel_len_dist + (self.dist_bias)
+        indel_len_dist = np.array([(i/indel_len_dist.sum()) for i in indel_len_dist])
+        return indel_len_dist
+
+    def E_step(self, theta_a: float)-> pd.Series:
+        """
+        q here is allowed to be weighted by a likelihood coming from Markov model.
+        *** Currently disabled in gel_L,
+            so that only the distribution of indel lenghts is considered. ***
+        """
+        # update P(indel l | MMEJ) and P(indel l | NHEJ)
+        self.df.loc[: ,['r_nMMEJ', 'r_nNHEJ']] = np.array(
+            self.df.apply(lambda x: self.get_L(motif=x['del_mmej_cand'], 
+                    indel_pos=x['motif_position'], obs_len=(x['indel_len']-1), L=x[self.MM_lk]), 
+                    result_type='expand', axis=1))
+        self.update_log(theta_a=theta_a)
+        # Realigments normalizing
+        # calculating realignment wigths (realignment_w)
+        self.df['realignment_w'] = ((self.df['r_nMMEJ']*theta_a)+(self.df['r_nNHEJ'])*(1-theta_a))
+        self.df['realignment_w'] = self.df.groupby('variant_id',sort=False).apply(
+                lambda x: x['realignment_w']/x['realignment_w'].sum()).reset_index()['realignment_w']
+        # Multiply by theta_a and normalization
+        self.df['r_nMMEJ']=(self.df['r_nMMEJ']*theta_a)/(
+                    (self.df['r_nMMEJ']*theta_a)+(self.df['r_nNHEJ'])*(1-theta_a))
+        self.df['r_nNHEJ'] = 1 - self.df['r_nMMEJ']
+        
+        # Multiplying realignment wigths and Likelihoods
+        self.df['r_nMMEJ'] = self.df['r_nMMEJ'] * self.df['realignment_w']
+        self.df['r_nNHEJ'] = self.df['r_nNHEJ'] * self.df['realignment_w']
+        
+    def M_step(self) -> float:
+        """
+        A function that performes the N-step as follow:
+        Avereging the E-step vector
+        Rerurns:
+            The Avg value of the E-step vector (float)
+        """
+        # update dist
+        self.indel_len_dist_mmej = self.get_indel_length_dist(mechanism='r_nMMEJ')
+        self.indel_len_dist_nhej = self.get_indel_length_dist(mechanism='r_nNHEJ')
+        # update theta_a_t
+        theta_a_t = self.df.loc[:,'r_nMMEJ'].sum()/self.n_variants
+        return theta_a_t
+
+    def EM_main_loop(self, theta_a: float) -> None:
+        """
+        The core loop of the EM
+        Args:
+            theta_a (float): proportion of the mechanism
+        Mutate:
+            theta_a (float): the value that the EM was
+                converged to (represents the converged proportion 
+                    of the mechanism).
+            posterior_decoding (pd.Series): the posterior decoding 
+                using theta_a       
+        """
+        self.n_variants = len(np.unique(np.array(self.df['variant_id'])))
+        self.dist_bias = 1*10**-4
+
+        # Creating an initial distribution of indel length over the whole dataset       
+        # MMEJ initial distribution
+        mmej_init_dist = np.array([(len(self.df.loc[self.df['indel_len'] == i, 'variant_id'].unique())/
+                            self.n_variants) for i in range(1,(self.window_size+1))])
+
+        mmej_init_dist = mmej_init_dist + (self.dist_bias)
+        self.indel_len_dist_mmej = np.array([(i/mmej_init_dist.sum()) for i in mmej_init_dist])
+        
+        # NHEJ initial distribution
+        nhej_init_dist = np.array([(len(self.df.loc[((self.df['indel_len'] == i) & 
+                                                (self.df['del_mmej_cand'].isna() == True)), 'variant_id'].unique())
+                                        /(len(self.df.loc[(self.df['del_mmej_cand'].isna() == True), 'variant_id'].unique())+1)) 
+                                                for i in range(1,(self.window_size+1))])
+        nhej_init_dist = nhej_init_dist + (self.dist_bias)
+        self.indel_len_dist_nhej = np.array([(i/nhej_init_dist.sum()) for i in nhej_init_dist])
+
+        #################### Try just taking same dist as MMEJ and see if there is any differnece at all ####################
+        # In cases were there are 0 NHEJ, the distribution takes 0.9 of the values of the MMEJ
+        if all(nhej_init_dist) == 0:
+            nhej_init_dist = np.array(mmej_init_dist) * 0.9
+            nhej_init_dist = np.array([i/nhej_init_dist.sum() for i in nhej_init_dist])
+
+        
+        self.df.loc[:, 'motif_position'] = self.df.apply(lambda x: self.get_motif_pos(motif=x['del_mmej_cand'], 
+                    context_seq=x[f'ref_context_seq_{self.window_size}bp']), axis=1)
+        
+        not_converged=True
+        self.iter = 0
+        while not_converged:
+            # if (self.iter%3) == 0:
+            #     self.plot_indel_len_dist(theta_a=theta_a)
+            self.E_step(theta_a=theta_a) # E-step           
+            theta_a_t = self.M_step() # M-step
+            distance_from_convergence=(theta_a_t-theta_a) ** 2
+            theta_a=theta_a_t
+            self.iter +=1
+            if distance_from_convergence < self.convergence_threshold:
+                not_converged=False
+        
+        self.del_MMEJ_post_decoding = self.df.loc[:, 'r_nMMEJ']
+        self.del_NHEJ_post_decoding = self.df.loc[:, 'r_nNHEJ']
+        self.theta_a = theta_a
