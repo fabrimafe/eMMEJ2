@@ -42,15 +42,6 @@ class EMq:
         self.EM_main_loop(theta_a=self.initial_theta)
 
     def plot_indel_len_dist(self,theta_a: float):
-        # x = [i for i in range(1,(self.window_size+1))]
-        # plt.plot(x, self.indel_len_dist_mmej, linestyle="-", label="MMEJ", alpha=0.6)
-        # plt.plot(x, self.indel_len_dist_nhej, linestyle="--", label="NHEJ", alpha=0.6)
-        # plt.ylim([0,0.2])
-        # plt.xlabel('Indel length')
-        # plt.ylabel('Frequency')
-        # plt.legend()
-        # plt.show()
-        
         plt.plot(self.df['r_nMMEJ'], self.df['r_nNHEJ'], 'ko', alpha=0.2)
         plt.plot(theta_a, 0.02, 'ro')
         plt.plot(0.02, (1-theta_a), 'go')

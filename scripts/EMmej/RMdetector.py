@@ -18,6 +18,7 @@ from pysam import FastaFile
 from Bio import pairwise2
 
 from MicroHomology_module_v3 import emMEJrealignment
+from realignment_module import * 
 from pysam_getfasta import *
 
 # setting pandas display options
@@ -61,29 +62,9 @@ args = vars(all_args.parse_args())
 # In this section
 # 1) cleaning of the data based on the xo
 # 2) define ancestral state
-#
+# 3) if genomic data realign
 #
 # 
-def set_ancestral_state_indel(df: pd.DataFrame):
-    """
-    Set columns for ancestral and derived alleles based on 
-    a binary column (ANCESTRAL) indicating whether the ancestral state is: 
-    REF allele - if ANCESTRAL==0
-    ALT allele - if ANCESTRAL==1
-    Args:
-        df (pd.DataFrame) : A dataframe with the following
-            columns: 'CHR', 'POS', 'REF', 'ALT', 'ANCESTRAL'
-
-    Implementation:
-    it uses numpy select, which vectorialize if-conditions (specified in condlist) and 
-    respective consequences (specified in choicelist)
-    """
-    condl = [df['ANCESTRAL'] == 0, df['ANCESTRAL'] == 1]
-    choicel = [df['REF'], df['ALT']]
-    df['ANC'] = np.select(condlist=condl,  choicelist=choicel)
-    choicel = [df['ALT'], df['REF']]
-    df['DER'] = np.select(condlist=condl,  choicelist=choicel)
-
 # Loading data
 path_to_data = args["vcf"]
 Dtypes={'CHR':str, 'POS':int, 'REF':str, 'ALT':str, 'ANCESTRAL': int}
@@ -123,92 +104,20 @@ df = df.loc[(df['context_contains_N'] == False), :]
 df.drop(columns=['context_contains_N'], inplace=True)
 
 # df = df.loc[df['CHR'] == 'pol_slip_monodirectional_0',:]
+
+
+#if genomic data realign indels
 if not args['CRISPR']:
-    # -------------------------- REALIGNMENT SECTION ----------------------------------------------
-    def alignments2vcf(xalignment, chrom='CHR', pos=0, starting_base="N"):
-        """convert a single alignment to vcf-like format, adding the
-           original starting position as a tag for the
-           alignment (useful in case of many alignments)"""
-        genotypes = []
-        inindel=0
-        xindel=''
-        xpos=pos
-        ref_genotype="N"
-        for a, b in zip(xalignment[0]+'n',xalignment[1]+'n'):
-            if a==b and inindel==1:
-                genotypes.append([chrom,pos_indel,ref_genotype_var,xindel,pos])
-                inindel=0
-            if a != b and a!="-" and b!="-":
-                genotypes.append([chrom,xpos,a,b,pos])
-            if a != b and a=='-' and b!='-':
-                if inindel==0:
-                    ref_genotype_var=ref_genotype
-                    xindel=ref_genotype_var
-                    pos_indel=xpos-1
-                inindel=1
-                xindel=xindel+b
-            if a != b and a!='-' and b=='-':
-                if inindel==0:
-                    pos_indel=xpos
-                    xindel=ref_genotype
-                    ref_genotype_var=ref_genotype
-                    pos_indel=xpos-1
-                inindel=1
-                ref_genotype_var=ref_genotype_var+a
-            ref_genotype=a
-            xpos=xpos+1
-        return(genotypes)
-
-    def vcf2realignedvcfs(refA,chrom,pos,REF,ALT,length_around):
-        """perform indel realignment for a single variant in vcf format 
-        listing all possible equally-best alignments. Then it applies 
-        alignments2vcf for each of these, returning all possible
-        indel calls for a single variant. Output in vcf format + an identifier
-        tag that indicates original_position.index, where the index specifies 
-        the index of the alignment of that position (useful when a 
-        single indel can be split in several sub-indels)"""
-        if REF!=ALT and REF!="N" and ALT!="N" and not pd.isna(REF) and not pd.isna(ALT):
-            starting_base=refFA.fetch(chrom,pos-2-length_around,pos)
-            seqREF=refFA.fetch(chrom,pos-1-length_around,pos-1)+REF+refFA.fetch(chrom,pos+len(REF)-1,pos+length_around+len(REF))
-            seqALT=refFA.fetch(chrom,pos-1-length_around,pos-1)+ALT+refFA.fetch(chrom,pos+len(REF)-1,pos+length_around+len(REF))
-            alignments = pairwise2.align.localms(seqREF, seqALT ,5, -1, -0.5, -0.1)
-            scores=[]
-            for a in alignments:
-                scores.append(a[2])
-            vcfs=[]
-            al_counter=0
-            for a in alignments:
-                if a[2]==max(scores):
-                    al_counter=al_counter+1
-                    if a[0][0]!="-" and a[0][len(a[0])-1]!="-":
-                        vcfs.append(alignments2vcf(a,chrom,pos-1-length_around)[0]) #,starting_base
-                        #fix tag to have the original position of the vcf
-                        vcfs[len(vcfs)-1][4]=str(vcfs[len(vcfs)-1][4]+length_around+1)+"."+str(al_counter)
-        else:
-                vcfs=[]
-        return(vcfs)
-
-    def flatten_2list(list_of_lists):
-        flat_list=[]
-        for item in list_of_lists:
-            for item2 in item:
-                flat_list.append(item2)
-        return(flat_list)
-
     df=df.apply(lambda row : vcf2realignedvcfs(refFA,row['CHR'],row['POS'], row['ANC'],row['DER'],150), axis = 1)
     df=flatten_2list(df.tolist())
     df=pd.DataFrame(df,columns = ['CHR','POS','ANC',"DER","original_pos"])
     df.loc[:, 'POS'] = df.loc[:, 'POS'] + 1
 
-
 # -------------------------- PREPARING THE DATA TO MOTIF FINDING STEP -------------------------
 # making sure that there are no SNPs in the data
 df = df.loc[(df.loc[:,'DER'].str.len() != df.loc[:,'ANC'].str.len()),:]
 # Removing duplicates
-df.drop_duplicates(
-    subset=['CHR','POS','ANC',
-    "DER"],
-    inplace=True)
+df.drop_duplicates(subset=['CHR','POS','ANC',"DER"],inplace=True)
 df.reset_index(drop=True,inplace=True)
 
 # getting rid of the 'N' in ref and NaN in DER
@@ -356,34 +265,6 @@ df['snap_mh2_len'] = df['snap_mh2'].str.len()
 df['loop_mh2_len'] = df['loop_mh2'].str.len()
 df.loc[(df['del_mmej'] == True), 'del_motif_d'] = df.loc[(df['del_mmej'] == True), 'indel_len'] - df.loc[(df['del_mmej'] == True), 'del_mmej_cand_len']
 
-def get_motifs_pos(ref, CHR, POS, large_window,
-            small_window, motif, indel_type):
-    """
-    A function that returns all positions with the motif
-    in a given context (small_window) 
-    """    
-    context = ref.fetch(CHR,POS-large_window ,POS+large_window).upper()
-    mmej_motif_pos = np.array([m.end() for m in 
-            re.finditer(motif, context, overlapped=True)])
-
-    mmej_motif_pos = mmej_motif_pos - (len(context)/2)
-    motif_count_large = mmej_motif_pos.shape[0]
-    motif_freq_large = round(motif_count_large/(large_window-len(motif)), 5)
-    motif_count_small = mmej_motif_pos[((mmej_motif_pos < small_window) & 
-                            (mmej_motif_pos > ((-1)*small_window)))].shape[0]
-    motif_freq_small = round(motif_count_small/(small_window-len(motif)), 5)
-    mmej_motif_pos = mmej_motif_pos[(mmej_motif_pos>(-1*small_window)) & 
-                        (mmej_motif_pos<(small_window))]
-    mmej_motif_pos = mmej_motif_pos.tolist()
-    if len(mmej_motif_pos)>0:
-        out = ''
-        for i in mmej_motif_pos:
-            out = f"{out},{i}"
-        return np.array((out[1:], motif_freq_small, motif_freq_large))
-    else:
-        return np.array((np.nan, motif_freq_small, motif_freq_large))
-
-
 #Create output table of positions. Unfortunately, it works only for one pattern for mechanism.
 mechanism = ['del_mmej', 'SD_loop_out', 'SD_snap_back']
 patterns = ['del_mmej_cand', 'loop_repeat_pat', 'snap_repeat_pat']
@@ -393,7 +274,7 @@ cols = [['del_mmej_motif_pos', 'del_mmej_freq_small_window', 'del_mmej_freq_larg
 for mech,pat,col in zip(mechanism, patterns, cols):
     df.loc[:, col] = np.nan, np.nan, np.nan
     tmp_df = df.loc[
-            (df[mech] == True),:].apply(lambda row: get_motifs_pos(
+            (df[mech] == True),:].apply(lambda row: get_motifs_freqs(
                 ref=refFA, CHR=row['CHR'], POS=row['POS'], large_window=1000,
                 small_window=args['windowsize'],
                     motif=row[pat], indel_type=row['indel_type']),
@@ -410,10 +291,10 @@ df.loc[df['SD_snap_back']==True,'snap_repeat_pat_len'] = df.loc[df['SD_snap_back
 df['loop_repeat_pat_len'] = np.nan
 df.loc[df['SD_loop_out']==True,'loop_repeat_pat_len'] = df.loc[df['SD_loop_out']==True, 'loop_repeat_pat'].str.len()
 
-col_to_save = ['CHR', 'POS', 'original_pos', 'variant_id', 'direction', 'ANC', 
-            'DER', 'indel_type', 'indel_len',  
+col_to_save = ['CHR', 'POS', 'original_pos', 'variant_id', 'direction', #'REF','ALT',
+            'ANC','DER', 'indel_type', 'indel_len',  
             # deletions
-            'del_mmej', 'del_mmej_cand', 'del_mmej_marked' ,'del_mmej_marked_on_ref',
+            'del_mmej', 'del_mmej_cand', 'del_mmej_marked_on_ref', 'del_mmej_marked',
             'del_last_dimer','del_mmej_cand_len',
             # snap-back
             'SD_snap_back', 'snap_mmej_marked', 'snap_P1', 'snap_P2','snap_mh1', 
@@ -431,7 +312,7 @@ col_to_save = ['CHR', 'POS', 'original_pos', 'variant_id', 'direction', 'ANC',
             'pol_slip', 'pol_slip_submotif', 'pol_slippage_times',
             'pol_slippage_last_dimer', 'pol_slip_motif_len']
 
-if args["include_context"]: col_to_save = col_to_save + ['ref_genome_context', 'accession_sequence']
+if args["include_context"]: col_to_save = col_to_save + ['ref_genome_context', 'mutant_sequence']
 
 df.loc[:,'del_mmej'].fillna(value=False, inplace=True)
 df.loc[:,'SD_snap_back'].fillna(value=False, inplace=True)

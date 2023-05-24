@@ -2,6 +2,9 @@
 
 import pandas as pd
 from pysam import FastaFile
+import numpy as np
+import regex as re
+
 
 def get_ref_context(refFA: FastaFile,  chrom: str, 
                      indel_seq: str, indel_pos: int,
@@ -22,7 +25,7 @@ def get_ref_context(refFA: FastaFile,  chrom: str,
                              (indel_pos + len(indel_seq) + context_window_size+1))
 
 
-def mutant_context_generator(reference_contex : str,
+def get_mutant_context(reference_contex : str,
                                 alt : str, ref : str, window_size: int):
     """
     Reconstruct the mutant sequence 
@@ -52,3 +55,46 @@ def mutant_context_generator(reference_contex : str,
     # assert (mutant_context_check == alt), f'mutant_context_check dose not match ALT, expected: {alt}, got: {mutant_context_check}'
     
     return mutant_context
+
+
+def get_motifs_pos(ref, CHR, POS, motif, windowsize):
+    """
+    A function that returns all positions with the motif
+    in a given context (small_window)
+    """
+    context = ref.fetch(CHR,POS-windowsize ,POS+windowsize).upper()
+    mmej_motif_pos = np.array([m.end() for m in re.finditer(motif, context, overlapped=True)])
+
+    mmej_motif_pos = mmej_motif_pos - (len(context)/2)
+    #mmej_motif_pos = mmej_motif_pos[(mmej_motif_pos>(-1*small_window)) &
+#                        (mmej_motif_pos<(small_window))]
+    mmej_motif_pos = mmej_motif_pos.tolist()
+    return mmej_motif_pos
+
+
+def get_motifs_freqs(ref, CHR, POS, large_window, small_window, motif, indel_type):
+    """
+    A function that returns all positions with the motif
+    in a given context (small window) and frequencies of the motif
+    in windows of different size.
+    """
+    context = ref.fetch(CHR,POS-large_window ,POS+large_window).upper()
+    mmej_motif_pos = np.array([m.end() for m in
+            re.finditer(motif, context, overlapped=True)])
+
+    mmej_motif_pos = mmej_motif_pos - (len(context)/2)
+    motif_count_large = mmej_motif_pos.shape[0]
+    motif_freq_large = round(motif_count_large/(large_window-len(motif)), 5)
+    motif_count_small = mmej_motif_pos[((mmej_motif_pos < small_window) &
+                            (mmej_motif_pos > ((-1)*small_window)))].shape[0]
+    motif_freq_small = round(motif_count_small/(small_window-len(motif)), 5)
+    mmej_motif_pos = mmej_motif_pos[(mmej_motif_pos>(-1*small_window)) &
+                        (mmej_motif_pos<(small_window))]
+    mmej_motif_pos = mmej_motif_pos.tolist()
+    if len(mmej_motif_pos)>0:
+        out = ''
+        for i in mmej_motif_pos:
+            out = f"{out},{i}"
+        return np.array((out[1:], motif_freq_small, motif_freq_large))
+    else:
+        return np.array((np.nan, motif_freq_small, motif_freq_large))

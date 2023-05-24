@@ -93,15 +93,15 @@ def get_kmers_counts(seq: str, k_size: int):
     Returns:
         pd.Series with the kmers and thier counts
     """
-    sequance = seq.upper()
+    sequence = seq.upper()
     # k_size = int(k_size)
-    # memmory allocating : vector in length of the sequance, for kmers
-    kmers = np.zeros(len(sequance), dtype = 'object')
-    # spliting the sequance into kmers
-    for i in range(0, (len(sequance) - 1)):
-        if i>(len(sequance)-(k_size + 1)): break
+    # memmory allocating : vector in length of the sequence, for kmers
+    kmers = np.zeros(len(sequence), dtype = 'object')
+    # spliting the sequence into kmers
+    for i in range(0, (len(sequence) - 1)):
+        if i>(len(sequence)-(k_size + 1)): break
         # generating a kmer that is twice the length of the desiered kmer
-        else: kmers[i] = sequance[i:(i+(k_size + 1))]
+        else: kmers[i] = sequence[i:(i+(k_size + 1))]
     # calculating the freq of each twice long kmer in the sequence
     return (pd.Series(kmers).value_counts().drop(labels=[0]))
 
@@ -435,7 +435,7 @@ def get_p_value(motif_prob_per_state: np.array,
     return p_val
 
 
-def main_markovian_process(sequance: str , motif: str,
+def main_markovian_process(sequence: str , motif: str,
                     motifs_d: int, memory_dimer: str,
                     early_stop: float) -> float: 
     # print('----------------------------------------------')
@@ -446,7 +446,7 @@ def main_markovian_process(sequance: str , motif: str,
     calculate the likelihood and p-value of a given motif
     at a given state and context 
     Args:
-        sequance (str):  
+        sequence (str):  
         motif (str): the motif's sequence
         motifs_d (int):  the distance between the two motifs 
             (used to call is indel_len in the previous version)
@@ -462,7 +462,7 @@ def main_markovian_process(sequance: str , motif: str,
 
     memory = 2
     motifs_d = motifs_d+memory
-    M = get_TM(sequance, memory)
+    M = get_TM(sequence, memory)
     # calling get_markov_states to create a df with all
     # the transition probability in the given state range
     state_df = get_markov_states(M, first_kmer = memory_dimer,
@@ -479,7 +479,7 @@ def main_markovian_process(sequance: str , motif: str,
     p_value = get_p_value(motif_prob_per_state=pMHpos_before_obs_pos,
                      motifs_d=motifs_d, early_stop=early_stop)
     # Calculating the freq_motif_eq
-    eq_state = get_equilibrium_state(sequence=sequance, n_mer=2)
+    eq_state = get_equilibrium_state(sequence=sequence, n_mer=2)
     eq_state_df = get_markov_states(M, first_kmer=memory_dimer,
                                 number_of_states=3, 
                                 eq_state=eq_state,

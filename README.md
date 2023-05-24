@@ -1,7 +1,6 @@
 # emMEJ2
-### This is an update over emMEJ (which was built with Guy Tadmor) to replace 2nd order Markov chain approach is my new way to document my master's project
-### emMEJ can be found in https://github.com/GuyTadmor-28/guy_master_project or in local WEXAC folder /home/labs/alevy/fabrizio/github/guymasterproject_final/guy2023
-### This structure is according to the recomended one from "Good research code" book
+This is an update over emMEJ (which was built with Guy Tadmor) to replace 2nd order Markov chain approach is my new way to document my master's project
+emMEJ can be found in https://github.com/GuyTadmor-28/guy_master_project or in local WEXAC folder /home/labs/alevy/fabrizio/github/guymasterproject_final/guy2023
 
 ## Directory description:
 ```
@@ -32,3 +31,4 @@ conda create --name recoveredenv --file guy_mmej_env.yml
 ## License
 
 ## Acknowledgments
+Avi! And read "Good research code" !

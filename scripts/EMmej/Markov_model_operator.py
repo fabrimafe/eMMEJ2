@@ -1,7 +1,6 @@
 # python3 Markov_model_operator.py -v 20220718_RMdetector_output.csv -o /home/labs/alevy/guyta/guy_master_project/scripts/general_scripts/RM_wraped_software -w 1500 -r /home/labs/alevy/guyta/guy_master_project/data/indels_simulations/from_fabrizio/indel_sumlations/simulations/GWHAAEV00000000.1.genome.fasta -ir False
 
 import sys
-# sys.path.append('/home/labs/alevy/guyta/guy_master_project/src')
 sys.path.append('src')
 from io import StringIO
 import datetime
@@ -36,7 +35,6 @@ all_args.add_argument("-r", "--ref", required=False,
    help="path to reference genome in fasta format (string)")
 all_args.add_argument("-p", "--probability", required=True, default="markov",
       help="whether to speed up calculations by using a simplified 'Geometric' model rather than a full Markovian chain to calculate likelihoods 'Markov'")
-
 # optional arguments, turned on by using the flag
 all_args.add_argument("-w", "--windowsize", required=False, 
         default=1000, type=int, 
@@ -52,7 +50,7 @@ output_file = args["outputfile"]
 #output_file2 = args["outputfile2"]
 
 Dtypes = {'CHR': str, 'POS': int, 'original_pos': str, 'variant_id': str, 'direction': int,
-            'ancestral_indel': str, 'derived_indel': str, 'indel_type': str, 'indel_len': int,  
+            'ANC': str, 'DER': str, 'indel_type': str, 'indel_len': int,  
             # deletions
             'del_mmej': bool, 'del_mmej_cand': str, 'del_mmej_marked': str ,'del_mmej_marked_on_ref': str,
             'del_last_dimer': str,'del_mmej_cand_len': float,
@@ -72,10 +70,10 @@ Dtypes = {'CHR': str, 'POS': int, 'original_pos': str, 'variant_id': str, 'direc
             'pol_slip': bool, 'pol_slip_submotif': str, 'pol_slippage_times': float,
             'pol_slippage_last_dimer': str, 'pol_slip_motif_len': float}
 
-if args["include_context"]: Dtypes = {**Dtypes, **{'ref_genome_context': str, 'accession_sequence': str}}
+if args["include_context"]: Dtypes = {**Dtypes, **{'ref_genome_context': str, 'mutant_sequence': str}}
 
-col_names = ['CHR', 'POS', 'original_pos', 'variant_id', 'direction', 'ancestral_indel', 
-            'derived_indel', 'indel_type', 'indel_len',  
+col_names = ['CHR', 'POS', 'original_pos', 'variant_id', 'direction', 'ANC', 
+            'DER', 'indel_type', 'indel_len',  
             # deletions
             'del_mmej', 'del_mmej_cand', 'del_mmej_marked' ,'del_mmej_marked_on_ref',
             'del_last_dimer','del_mmej_cand_len',
@@ -95,7 +93,7 @@ col_names = ['CHR', 'POS', 'original_pos', 'variant_id', 'direction', 'ancestral
             'pol_slip', 'pol_slip_submotif', 'pol_slippage_times',
             'pol_slippage_last_dimer', 'pol_slip_motif_len']
 
-if args["include_context"]: col_names = col_names + ['ref_genome_context', 'accession_sequence']
+if args["include_context"]: col_names = col_names + ['ref_genome_context', 'mutant_sequence']
 
 path_to_data = args["vcf"]
 
@@ -111,21 +109,23 @@ df = pd.read_csv(path_to_data, sep="\t", header=None, dtype=Dtypes,
 fastafile=args['ref']
 refFA=FastaFile(fastafile)
 # Getting the reference genome around the indel
-df.loc[:, f"ref_context_seq_{args['windowsize']}bp"] = df.apply(lambda x: get_ref_context(refFA=refFA, chr=x['CHR'], indel_pos=x['POS'],
-                     context_window_size=int(args['windowsize']), indel_seq=x['derived_indel']), axis=1)
-
+df.loc[:, f"ref_context_seq_{args['windowsize']}bp"] = df.apply(lambda x: get_ref_context(refFA=refFA, chrom=x['CHR'], indel_pos=x['POS'],context_window_size=int(args['windowsize']), indel_seq=x['DER']), axis=1)
 df.loc[:, f"ref_context_seq_{args['windowsize']}bp"] = df.loc[:, f"ref_context_seq_{args['windowsize']}bp"].str.upper()
 
-# Reconstructing the accession context ##### Check if needed #########
-df.loc[:, 'accession_context'] = df.apply(
-    lambda x: accession_context_generator(reference_contex=x[f"ref_context_seq_{args['windowsize']}bp"],
-                            alt=x['derived_indel'], ref=x['ancestral_indel'], window_size=args['windowsize']), axis=1)
-df.loc[:, 'accession_context'] = df.loc[:, 'accession_context'].str.upper()
+# Reconstructing the mutant context ##### Not used further, check if needed #########
+df.loc[:, 'mutant_context'] = df.apply(
+    lambda x: mutant_context_generator(reference_contex=x[f"ref_context_seq_{args['windowsize']}bp"],
+                            alt=x['DER'], ref=x['ANC'], window_size=args['windowsize']), axis=1)
+df.loc[:, 'mutant_context'] = df.loc[:, 'mutant_context'].str.upper()
 
 """
-Calculating liklyhood and p-value of finding a motif in a
-specific distance from the 1st motif.
+Calculating likelihood and p-value of finding a motif at a specific distance from the 1st motif.
+for insertions: the motif is the repeat ('template_switch_repeat')
+for  mmej snap back: the motif is the repeat ('S_template_switch_repeat')
+for deletions: the motif is the 'mmej_cand'
+for all indels the last nucleotide is the one that comes right before the DSB on the reference seq
 """
+#initialize dataframe
 df['del_mmej_lk'] = np.nan
 df['SD_snap_back_lk_bc'] = np.nan
 df['SD_loop_out_lk_bc'] = np.nan
@@ -144,30 +144,28 @@ df['pChance_MMEJ_MH2'] = np.nan
 df['pChance_snap'] = np.nan
 df['pChance_loop'] = np.nan
 
-"""
-for insertions: the motif is the repeat ('tamplate_switch_repeat')
-for  mmej snap back: the motif is the repeat ('S_tamplate_switch_repeat')
-for deletions: the motif is the 'mmej_cand'
-for all indels the last nucleotide is the one that comes right before the DSB on the reference seq
-"""
+####################Calculating the probabilities mechanism by mechanism ##################
+
+#--------------->deletions MMEJ
+
 df.loc[(df['del_mmej'] == True), 'del_motif_d'] = df.loc[(df['del_mmej'] == True), 'indel_len'] - df.loc[(df['del_mmej'] == True), 'del_mmej_cand_len']
 # creating a df with only deletions
-df_with2K_del_mmej = df.loc[((df['del_mmej'] == True) & 
+df_mmej = df.loc[((df['del_mmej'] == True) & 
            (df['indel_type'] == 'DEL')), :].copy()
 
 if probabilitytype=="geometric":
     print("start geometric model calculations for deletions")
-    df_with2K_del_mmej['max_length_MH']=df_with2K_del_mmej.apply(lambda row : find_longest_MH(refFA,row['CHR'],row['POS'], row['ancestral_indel']), axis = 1) #useless step
-    df_with2K_del_mmej['del_mmej_lk']=df_with2K_del_mmej.apply(lambda row : MH2prob_delNHEJ(refFA,row['CHR'],row['POS'], row['ancestral_indel'], row['max_length_MH']), axis = 1)
-    # df_with2K_del_mmej['del_mmej_lk']=df_with2K_del_mmej.apply(lambda row : MH2prob_delNHEJ(refFA,row['CHR'],row['POS'], row['ancestral_indel'], row['del_motif_d']), axis = 1)
-    df_with2K_del_mmej['del_mmej_p_val']=df_with2K_del_mmej.apply(lambda row : row['del_mmej_lk'], axis = 1)
-    MM_del_df = df_with2K_del_mmej
+    df_mmej['max_length_MH']=df_mmej.apply(lambda row : find_longest_MH(refFA,row['CHR'],row['POS'], row['ANC']), axis = 1) #useless step
+    df_mmej['del_mmej_lk']=df_mmej.apply(lambda row : MH2prob_delNHEJ(refFA,row['CHR'],row['POS'], row['ANC'], row['max_length_MH']), axis = 1)
+    # df_mmej['del_mmej_lk']=df_mmej.apply(lambda row : MH2prob_delNHEJ(refFA,row['CHR'],row['POS'], row['ANC'], row['del_motif_d']), axis = 1)
+    df_mmej['del_mmej_p_val']=df_mmej.apply(lambda row : row['del_mmej_lk'], axis = 1)
+    MM_del_df = df_mmej
 
 if probabilitytype=="markov":
     print("start markov model calculations for deletions")
-    MM_del_df = df_with2K_del_mmej.apply(
+    MM_del_df = df_mmej.apply(
         lambda x: main_markovian_process(
-            sequance = x[f"ref_context_seq_{args['windowsize']}bp"] , 
+            sequence = x[f"ref_context_seq_{args['windowsize']}bp"] , 
                                  motif = x['del_mmej_cand'],
                                 motifs_d = int(x['del_motif_d']),
                     memory_dimer = x['del_last_dimer'],
@@ -176,46 +174,47 @@ if probabilitytype=="markov":
                 1:'del_mmej_p_val',2:'pChance_MMEJ',
                 3:'del_mmej_freq_motif_eq'}, inplace=True)
 
-df.loc[ df_with2K_del_mmej.index, 
+df.loc[ df_mmej.index, 
     ['del_mmej_lk', 'del_mmej_p_val', 'pChance_MMEJ', 'del_mmej_freq_motif_eq']] = MM_del_df.loc[:, 
                     ['del_mmej_lk', 'del_mmej_p_val', 'pChance_MMEJ', 'del_mmej_freq_motif_eq']]  
 df.loc[:,'del_mmej_motif_count'] = np.nan
-df.loc[df_with2K_del_mmej.index,'del_mmej_motif_count'] = df.loc[df_with2K_del_mmej.index,: ].apply(lambda x: 
+df.loc[df_mmej.index,'del_mmej_motif_count'] = df.loc[df_mmej.index,: ].apply(lambda x: 
     len([m.start() for m in re.finditer(x['del_mmej_cand'], x[f"ref_context_seq_{args['windowsize']}bp"], overlapped=True)]), axis = 1)
 
-# Calculating probs as if MH length = 2 for all deletions
+
+#--------------->deletions MMEJ with MH length=2
 if probabilitytype=="markov":
     print("start markov model calculations for deletions assuming MH=2")
-    df_with2K_del_mmej_mh2 = df_with2K_del_mmej.loc[
-        ((df_with2K_del_mmej['indel_len'] >= 2) & 
-        (df_with2K_del_mmej['indel_type'] == 'DEL')), :]
-    # taking the
-    MM_del_df = df_with2K_del_mmej_mh2.apply(
+    df_mmej_mh2 = df_mmej.loc[
+        ((df_mmej['indel_len'] >= 2) & 
+        (df_mmej['indel_type'] == 'DEL')), :]
+    MM_del_df = df_mmej_mh2.apply(
         lambda x: main_markovian_process(
-            sequance = x[f"ref_context_seq_{args['windowsize']}bp"] , 
-                                motif = x['del_last_dimer'], # using the last dimer as the MH motif is same as taking the shortese MH of length 2
-                                motifs_d = int(x['indel_len'] - 2), # this is since the motif here is always of length 2
+            sequence = x[f"ref_context_seq_{args['windowsize']}bp"] , 
+                                motif = x['del_last_dimer'], # last dimer == MH motif of length 2
+                                motifs_d = int(x['indel_len'] - 2), # the motif is always of length 2
                     memory_dimer = x['del_last_dimer'],
                     early_stop=1), axis = 1,result_type='expand')
     MM_del_df.rename(columns={0: 'del_mmej_lk_MH2', 
                 1:'del_mmej_p_val_MH2',2:'pChance_MMEJ_MH2', 
                 3:'del_mmej_freq_motif_eq_MH2'}, inplace=True)
 
-df.loc[ df_with2K_del_mmej_mh2.index, 
-    ['del_mmej_lk_MH2', 'del_mmej_p_val_MH2', 
-    'pChance_MMEJ_MH2','del_mmej_freq_motif_eq_MH2']] = MM_del_df.loc[:, 
-                    ['del_mmej_lk_MH2', 'del_mmej_p_val_MH2', 
-                    'pChance_MMEJ_MH2','del_mmej_freq_motif_eq_MH2']]
+df.loc[ df_mmej_mh2.index, 
+    ['del_mmej_lk_MH2', 'del_mmej_p_val_MH2', 'pChance_MMEJ_MH2','del_mmej_freq_motif_eq_MH2']] = MM_del_df.loc[:, 
+                    ['del_mmej_lk_MH2', 'del_mmej_p_val_MH2', 'pChance_MMEJ_MH2','del_mmej_freq_motif_eq_MH2']]
 
 logging.debug('DEL mmej Markov ends')
+
+
+#--------------->SD-snapback
 
 logging.debug('Snap back mmej Markov starts')
 # creating a df with only mmej snap back
 print("start markov model calculations for insertions")
-df_with2K_mmej_snap_back = df.loc[(df['SD_snap_back'] == True), :].copy()
-MM_snap_df = df_with2K_mmej_snap_back.apply(
+df_snapback = df.loc[(df['SD_snap_back'] == True), :].copy()
+MM_snap_df = df_snapback.apply(
     lambda x: main_markovian_process(
-                sequance = x[f"ref_context_seq_{args['windowsize']}bp"] , 
+                sequence = x[f"ref_context_seq_{args['windowsize']}bp"] , 
                                  motif = x['snap_repeat_pat'],
                                 motifs_d = int(x['snap_dist_between_reps']),
                     memory_dimer = x['snap_last_dimer'],
@@ -233,11 +232,15 @@ df.loc[MM_snap_df.index,'snap_back_motif_count'] = df.loc[MM_snap_df.index,: ].a
     len([m.start() for m in re.finditer(x['snap_repeat_pat'], x[f"ref_context_seq_{args['windowsize']}bp"], overlapped=True)]), axis = 1)
 logging.debug('Snap back mmej Markov ends')
 
+
+
+#--------------->SD-loopout
+
 logging.debug('Loop out mmej Markov starts')
 # creating a df with only mmej Loop out
-df_with2K_mmej_loop_out = df[df['SD_loop_out'] == True].copy()
-MM_loop_df = df_with2K_mmej_loop_out.apply(
-    lambda x: main_markovian_process(sequance = x[f"ref_context_seq_{args['windowsize']}bp"] , 
+df_loopout = df[df['SD_loop_out'] == True].copy()
+MM_loop_df = df_loopout.apply(
+    lambda x: main_markovian_process(sequence = x[f"ref_context_seq_{args['windowsize']}bp"] , 
                                  motif = x['loop_repeat_pat'],
                                 motifs_d = int(x['loop_dist_between_reps']),
                     memory_dimer = x['loop_last_dimer'],
@@ -256,6 +259,10 @@ df.loc[MM_loop_df.index,'loop_out_motif_count'] = df.loc[MM_loop_df.index,: ].ap
     len([m.start() for m in re.finditer(x['loop_repeat_pat'], x[f"ref_context_seq_{args['windowsize']}bp"], overlapped=True)]), axis = 1)
 
 logging.debug('Loop out mmej Markov ends')
+
+
+################ PARSE PROBABILITIES FOR OUTPUT ###################
+
 # If no pattern found, the likelihood of finding a motif by chance
 # is == 1.
 df.loc[((df['indel_type'] == 'INS') &
@@ -312,10 +319,9 @@ df['pChance_loop'].fillna(value=1, inplace=True)
 
 
 """
-Sice the Markov model calculates the probability to find 2 motifs in a
+Since the Markov model calculates the probability to find 2 motifs in a
 defined range and a given context, this probability is the probability
-that something isn't MMEJ, therefore if one wants to have the probability
-of something to be a MMEJ, he should do 1-probability
+that something isn't MMEJ. Therefore the probability of MMEJ is 1-probability_from_Markov.
 """
 
 # convert indel length of deletions to negative its length
@@ -365,7 +371,7 @@ df.drop(columns=['index'], inplace=True)
 df.rename(columns={'variant_id_y': 'variant_id_N', 'variant_id_x': 'variant_id'}, inplace=True)
 
 col_to_save = ['CHR', 
-        'POS', 'original_pos','variant_id', 'variant_id_N','direction','ancestral_indel', 'derived_indel', 
+        'POS', 'original_pos','variant_id', 'variant_id_N','direction','ANC', 'DER', 
         'del_mmej_lk', 'del_mmej_p_val', 
 
         'SDMMEJ_lk','SD_snap_back_lk','SD_snap_back_lk_bc','SD_snap_back_p_val', 'pChance_snap',

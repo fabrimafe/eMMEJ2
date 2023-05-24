@@ -22,6 +22,9 @@ from helper import type_checker
 sys.path.append('src')
 from pysam_getfasta import *
 
+def checkNaN(str):
+  return str != str
+
 class emMEJrealignment:
     def __init__(self, 
                 ANC: str, DER: str,
@@ -32,31 +35,34 @@ class emMEJrealignment:
         self.indel_type = indel_type 
         self.flip = flip        
         self.include_context = include_context
+
         if MH_len_early_stop != 0:
             self.MH_early_stop = int(MH_len_early_stop)
         else: self.MH_early_stop = "None"
-        if (self.indel_type == 'INS'): self.indel_length = len(DER) - 1
-        if (self.indel_type == 'DEL'): self.indel_length = len(ANC) - 1
-        
-        # making all VCF format set to the right standart
+
+        if (self.indel_type == 'INS'):  # cropping indel sequence to the right size.
+            self.indel_length = len(DER) - 1
+            self.INDEL =  DER[len(ANC):] #fabri: is this for substitutions? Then why before length-1?
+            self.ANC = ANC
+        if (self.indel_type == 'DEL'): 
+            self.indel_length = len(ANC) - 1
+            self.ANC = ANC[len(DER):]
+            self.INDEL = DER[len(DER):]
+            windowsize = windowsize + self.indel_length
+            self.indel_position = windowsize
+
+        self.ref_seq = get_ref_context(refFA=refFA, chrom=chrom,indel_pos=pos_on_chr,
+                            context_window_size=windowsize,indel_seq=self.INDEL)
+        self.ref_seq = self.ref_seq.upper()
+       
+        # getting sequence contexts
         if (self.indel_type == 'INS'):
-            # cropping indel sequence to the right size. fabri: is this for substitutions? Then why before length-1?
-            self.INDEL =  DER[len(ANC):]
-            # getting a -30->indel->+30 reference sequence using get_ref_context, defined in src/pysam_getfasta.py. Returns sequence.
-            self.ref_seq = get_ref_context(refFA=refFA, chrom=chrom, 
-                            indel_pos=pos_on_chr,
-                            context_window_size=windowsize,
-                            indel_seq=self.INDEL)
-            self.ref_seq = self.ref_seq.upper()
-            # generating the mutant context
-            self.mutant_sequence = mutant_context_generator(
+            self.mutant_sequence = get_mutant_context(
                         reference_contex=self.ref_seq,
                         alt=DER,
                         ref=ANC,
                         window_size=(windowsize))
 
-            self.ANC = ANC
-            self.INDEL =  DER[len(ANC):] #fabri: duplicated line?
             # Flipping sequences (looking upward, i.e. in 5' direction from indel, without complement)
             if self.flip:
                 self.ref_seq = self.ref_seq[::-1]
@@ -66,36 +72,16 @@ class emMEJrealignment:
                 self.indel_position = self.indel_position + self.indel_length +1
             
         if (self.indel_type == 'DEL'):
-            windowsize = windowsize + self.indel_length
-            self.indel_position = windowsize
-            # cropping indel sequence to the right size
-            self.ANC = ANC[len(DER):]
-            self.INDEL = DER[len(DER):]
-            # self.indel_length = len(self.ANC)
-            
-            # Take care of the cases of fliped sequences
             if self.flip:
                 self.ANC = self.ANC[::-1]
                 self.indel_position = self.indel_position -self.indel_length +1
-            # getting a -30->indel->+30 refenrence context
-            self.ref_seq = get_ref_context(
-                        refFA=refFA, chrom=chrom,
-                        indel_pos=pos_on_chr,
-                        context_window_size=(windowsize),
-                         indel_seq=self.INDEL)
-            self.ref_seq = self.ref_seq.upper()
-            
-            if self.flip: self.ref_seq = self.ref_seq[::-1]
+                self.ref_seq = self.ref_seq[::-1]
             # generating the mutant context #fabri: the mutant context is the alternative?
-            self.mutant_sequence = mutant_context_generator(
+            self.mutant_sequence = get_mutant_context(
                         reference_contex=self.ref_seq,
                         alt=self.INDEL, 
                         ref=self.ANC, 
                         window_size=windowsize) 
-                           
-        ### Inputs Dtype chacking ###    
-        # assert check_argument_types() 
-        # type_checker(self.__dict__, self.__init__.__annotations__.values(),mode='class') 
 
         if self.include_context:
             self.context = {
@@ -113,9 +99,9 @@ class emMEJrealignment:
         """
         return seq.translate(self.tab)[::-1] #reverse
 
-    def seq_indel_spliter(self):
+    def get_seq_updownstream(self):
         """
-        seq_indel_spliter will get self as an input and will return
+        get_seq_updownstream will get self as an input and will return
         the upstream and downstream sequences of both the reference and
         the mutant as an output.
         """       
@@ -170,23 +156,14 @@ class emMEJrealignment:
     """
 
     def microhomology_detection(self):
-        self.seq_indel_spliter() # get seqs upstream and downstream
-
-        # initializing general attributes in order to create a complete
-        # attribute set for all indels
+        # get seqs upstream and downstream
+        self.get_seq_updownstream() 
         self.microhomology = False
         self.snap_out_dict = {}
         self.loop_out_dict = {}
         self.pol_slip_dict = {}
         self.del_out_dict = {}
 
-        """
-        Since the DSB in snap-back and loop-out ist ocur in between the 
-        two MH, there is no need to check if suck MH exist on both sides 
-        of the breake (as with trans-MMEJ and deletions).
-        Therefore we call the snap-back and loop-out functions right away if
-        an indel is an insertion
-        """
         if self.indel_type == 'INS': 
             self.sd_snap_back_MMEJ()
             self.sd_loop_out_MMEJ()
@@ -240,6 +217,12 @@ class emMEJrealignment:
             del_mmej_cand = mmej_cand
             self.distance_to_indel_position = distance_to_indel_position
         
+#        print(mmej_cand)
+#        if not checkNaN(mmej_cand):
+#            del_mmej_motif_pos = np.array([m.end() for m in #positions are the end positions of the motif in the sequence (e.g. TA if sequence is TATATA haso indices 2,4,6 (1based))
+#            reg.finditer(mmej_cand, self.ref_genome_down, overlapped=False)])
+#        else:
+#            del_mmej_motif_pos = ""
         _d = {
             'del_mmej': del_mmej,'del_mmej_cand': del_mmej_cand,
             'del_mmej_marked': del_mmej_marked ,'del_mmej_marked_on_ref':del_mmej_marked_on_ref,
