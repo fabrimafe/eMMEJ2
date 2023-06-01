@@ -79,8 +79,8 @@ logs_outputfile=args['logs']
 posteriordecodingfile=args['posteriordecoding']
 
 Dtypes = {'CHR': str, 'POS': int, 'original_pos': str, 'variant_id': str,'variant_id_N': str,
-             'direction':int,'ancestral_indel': str, 
-            'derived_indel': str, 'indel_len':int, 'del_mmej_lk':float, 'del_mmej_p_val':float, 
+             'direction':int,'ANC': str, 
+            'DER': str, 'indel_len':int, 'del_mmej_lk':float, 'del_mmej_p_val':float, 
         'SDMMEJ_lk': float, 'SD_snap_back_lk':float, 'SD_snap_back_lk_bc':float,'SD_snap_back_p_val':float, 
          'SD_loop_out_lk':float, 'SD_loop_out_lk_bc':float,'SD_loop_out_p_val':float,  
          'NHEJ_lk':float, 'NHEJ_p_val':float, 'unclassified_ins_lk':float, 
@@ -95,7 +95,7 @@ Dtypes = {'CHR': str, 'POS': int, 'original_pos': str, 'variant_id': str,'varian
         'del_mmej_freq_motif_eq':float,'loop_freq_motif_eq':float ,'snap_freq_motif_eq':float}
 
 col_names = ['CHR', 
-        'POS', 'original_pos','variant_id', 'variant_id_N','direction','ancestral_indel', 'derived_indel', 
+        'POS', 'original_pos','variant_id', 'variant_id_N','direction','ANC', 'DER', 
         'del_mmej_lk', 'del_mmej_p_val', 
 
         'SDMMEJ_lk','SD_snap_back_lk','SD_snap_back_lk_bc','SD_snap_back_p_val', 'pChance_snap',
@@ -113,11 +113,11 @@ col_names = ['CHR',
         'snap_motif_pos', 'snap_freq_small_window', 'snap_freq_large_window']
 
 path_to_data = args["vcf"]
-df = pd.read_csv(path_to_data, sep="\t", header=0, dtype=Dtypes, 
-                     names=col_names) # skiprows=1,
+#df = pd.read_csv(path_to_data, sep="\t", header=0, dtype=Dtypes, names=col_names) # skiprows=1,
+df = pd.read_csv(path_to_data, sep="\t") #, header=0, dtype=Dtypes, names=col_names) # skiprows=1,
 
 # take deletions only
-df = df.loc[(df['ancestral_indel'].str.len() > df['derived_indel'].str.len()), :]
+df = df.loc[(df['ANC'].str.len() > df['DER'].str.len()), :]
 fastafile=args['ref']
 refFA=FastaFile(fastafile)
 
@@ -125,28 +125,30 @@ refFA=FastaFile(fastafile)
 ### EM using indel length distribution ###
 ##########################################
 if args['EMalgorithm']==1:
+    #print(df.loc[2,])
+    #print(df.loc[2,'del_mmej_motif_pos'])
     # Getting the reference genome around the indel
+    print("Running EM based on indel lengths")
     df.loc[(df['direction'] == 1), 'POS'] = df.loc[(df['direction'] == 1), :].apply(lambda row: (row['POS']-row['indel_len']+1),axis=1)
-    df.loc[:, f"ref_context_seq_{args['windowsize']}bp"] = df.apply(lambda x: get_ref_context(refFA=refFA, chr=x['CHR'], indel_pos=x['POS'], indel_seq=x['derived_indel'],context_window_size=args['windowsize']), axis=1)
+    df.loc[:, f"ref_context_seq_{args['windowsize']}bp"] = df.apply(lambda x: get_ref_context(refFA=refFA, chrom=x['CHR'], indel_pos=x['POS'], indel_seq=x['DER'],context_window_size=args['windowsize']), axis=1)
 
     df.loc[:, f"ref_context_seq_{args['windowsize']}bp"] = df.loc[:, f"ref_context_seq_{args['windowsize']}bp"].str.upper()
     df.loc[(df['direction'] == 1), f"ref_context_seq_{args['windowsize']}bp"] = df.loc[(df['direction'] == 1), f"ref_context_seq_{args['windowsize']}bp"].apply(lambda row: row[::-1].upper())
     df['indel_len'] = df['indel_len'].abs()
-    print(df)
+    #print(df)
     EMq_obj = EMq(data=df,
                 initial_theta=0.1,
                 convergence_threshold=args['convergence'],
-                window_size=args['windowsize'],
-                MM_lk='del_mmej_lk')
+                window_size=args['windowsize']) #,
+#                MM_lk='del_mmej_lk')
 
     # print(f'EMq final theta MMEJ = {EMq_obj.theta_a}')
     EMq_obj.log.to_csv(outfile,sep='\t', index=False)
     EMq_obj.indel_length_dist_log.to_csv(logs_outputfile,sep='\t', index=False)
     df['del_MMEJ_EMq_post_decoding'] = EMq_obj.del_MMEJ_post_decoding
     df['del_NHEJ_EMq_post_decoding'] = EMq_obj.del_NHEJ_post_decoding
-
-
     df.to_csv(posteriordecodingfile, sep='\t', index=False)
+    
 
     if args['bootstrap']>0:
         #boot_s = int(round(boot_size*(len(df)),0))

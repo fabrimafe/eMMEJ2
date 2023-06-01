@@ -15,7 +15,8 @@ import regex as re
 import pandas as pd
 import numpy as np
 from pysam import FastaFile
-from Bio import pairwise2
+import Bio
+from Bio import Align #from Bio import pairwise2. # pairwise2 is now deprecated in Biopython >1.80
 
 from MicroHomology_module_v3 import emMEJrealignment
 from realignment_module import * 

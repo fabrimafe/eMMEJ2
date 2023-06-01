@@ -97,8 +97,8 @@ if args["include_context"]: col_names = col_names + ['ref_genome_context', 'muta
 
 path_to_data = args["vcf"]
 
-df = pd.read_csv(path_to_data, sep="\t", header=None, dtype=Dtypes, 
-                    skiprows=1, names=col_names)
+#df = pd.read_csv(path_to_data, sep="\t", header=None, dtype=Dtypes, skiprows=1, names=col_names)
+df = pd.read_csv(path_to_data, sep="\t") 
 
 # samp_variants = df['variant_id'].sample(10)
 # df = df.loc[df['variant_id'].isin(samp_variants),:]
@@ -113,10 +113,9 @@ df.loc[:, f"ref_context_seq_{args['windowsize']}bp"] = df.apply(lambda x: get_re
 df.loc[:, f"ref_context_seq_{args['windowsize']}bp"] = df.loc[:, f"ref_context_seq_{args['windowsize']}bp"].str.upper()
 
 # Reconstructing the mutant context ##### Not used further, check if needed #########
-df.loc[:, 'mutant_context'] = df.apply(
-    lambda x: mutant_context_generator(reference_contex=x[f"ref_context_seq_{args['windowsize']}bp"],
-                            alt=x['DER'], ref=x['ANC'], window_size=args['windowsize']), axis=1)
-df.loc[:, 'mutant_context'] = df.loc[:, 'mutant_context'].str.upper()
+#df.loc[:, 'mutant_context'] = df.apply( lambda x: mutant_context_generator(reference_contex=x[f"ref_context_seq_{args['windowsize']}bp"],
+#                            alt=x['DER'], ref=x['ANC'], window_size=args['windowsize']), axis=1)
+#df.loc[:, 'mutant_context'] = df.loc[:, 'mutant_context'].str.upper()
 
 """
 Calculating likelihood and p-value of finding a motif at a specific distance from the 1st motif.

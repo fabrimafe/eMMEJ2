@@ -15,8 +15,8 @@ class EMq:
     def __init__(self, data: pd.DataFrame, 
                 initial_theta: float,
                 convergence_threshold: float,
-                window_size: int, 
-                MM_lk: float) -> float:
+                window_size: int) -> float: #, 
+                #MM_lk: float) -> float:
         """
         This class encapsulate all steps that is needed in order
         to perform an Expectation Maximization algorithm
@@ -34,10 +34,10 @@ class EMq:
         self.initial_theta = initial_theta
         self.convergence_threshold = convergence_threshold
         self.window_size = window_size
-        self.MM_lk = MM_lk
+        #self.MM_lk = MM_lk
         self.log = pd.DataFrame(columns=['MMEJ_theta', 'NHEJ_theta', 'minus_log_likelihood'])
         self.indel_length_dist_log = pd.DataFrame(columns=['MMEJ_indel_len_dist', 'NHEJ_indel_len_dist'])
-        # exeption handeling
+        # exeption handling
         assert (self.df['indel_len'].max() < window_size), f"Window size must be at least the window size that was used for RMdetector.pf, current window size={window_size}"
         self.EM_main_loop(theta_a=self.initial_theta)
 
@@ -76,7 +76,7 @@ class EMq:
             mmej_pos (np.array): a normalized vector with all position of motifs
         """
         context_reg = context_seq[(round(len(context_seq)/2)):round(len(context_seq)/2+self.window_size)]
-        context_reg = context_seq[(round(len(context_seq)/2)):round((len(context_seq)/2)+self.window_size)]
+        #context_reg = context_seq[(round(len(context_seq)/2)):round((len(context_seq)/2)+self.window_size)]
         if type(motif) == str:
             mmej_pos = np.zeros(self.window_size)
             mmej_motif_pos = np.array([m.end() for m in 
@@ -87,28 +87,24 @@ class EMq:
             if len(mmej_motif_pos) == 0:
                 return np.zeros([self.window_size], dtype='int')
             mmej_pos[mmej_motif_pos] = 1
-            indel_pos = mmej_pos.nonzero()[0]
+            indel_pos = mmej_pos.nonzero()[0] #returns indices of nonzero elements for dimensions numpy array (first with [0])
             return np.array(indel_pos)
         else:
             return np.ones([self.window_size], dtype='int')
     
-    def get_L(self, motif: str,obs_len: int, indel_pos: list, L: float) -> list:
+    def get_conditional_prob_mechanisms(self, motif: str,obs_len: int, indel_pos: list) -> list: #L: float
         """
         L here is the likelihood that we used to weigh the q
         """
         if type(motif) == str:
             obs_len_freq = np.take(a=self.indel_len_dist_mmej, indices=obs_len)
-            indel_len_sum = np.take(a=self.indel_len_dist_mmej,
-                         indices=indel_pos).sum()
+            indel_len_sum = np.take(a=self.indel_len_dist_mmej,indices=indel_pos).sum()
             p_MMEJ = (obs_len_freq/indel_len_sum) #*L #
         else:
             p_MMEJ = 0
         p_NHEJ = np.take(a = self.indel_len_dist_nhej, indices=obs_len)/self.indel_len_dist_nhej.sum()
-        p_NHEJ = p_NHEJ #*(1-L)
-        p_MMEJ_norm = p_MMEJ/(p_MMEJ+p_NHEJ)
-        p_NHEJ_norm = p_NHEJ/(p_MMEJ+p_NHEJ)
-        return [p_MMEJ_norm, p_NHEJ_norm]
-        # return [p_MMEJ, p_NHEJ]
+        #p_MMEJ = p_MMEJ/(p_MMEJ+p_NHEJ); pNHEJ=1-pMMEJ
+        return [p_MMEJ, p_NHEJ]
 
     def get_indel_length_dist(self, mechanism :str) -> float:
         """
@@ -129,9 +125,12 @@ class EMq:
         """
         # update P(indel l | MMEJ) and P(indel l | NHEJ)
         self.df.loc[: ,['r_nMMEJ', 'r_nNHEJ']] = np.array(
-            self.df.apply(lambda x: self.get_L(motif=x['del_mmej_cand'], 
-                    indel_pos=x['motif_position'], obs_len=(x['indel_len']-1), L=x[self.MM_lk]), 
+            self.df.apply(lambda x: self.get_conditional_prob_mechanisms(motif=x['del_mmej_cand'], 
+                    indel_pos=x['motif_position'], obs_len=(x['indel_len']-1)), #, L=x[self.MM_lk]), 
                     result_type='expand', axis=1))
+        #print(self.df['r_nMMEJ'])
+        #print(self.df['r_nNHEJ'])
+
         self.update_log(theta_a=theta_a)
         # Realigments normalizing
         # calculating realignment wigths (realignment_w)
@@ -139,8 +138,7 @@ class EMq:
         self.df['realignment_w'] = self.df.groupby('variant_id',sort=False).apply(
                 lambda x: x['realignment_w']/x['realignment_w'].sum()).reset_index()['realignment_w']
         # Multiply by theta_a and normalization
-        self.df['r_nMMEJ']=(self.df['r_nMMEJ']*theta_a)/(
-                    (self.df['r_nMMEJ']*theta_a)+(self.df['r_nNHEJ'])*(1-theta_a))
+        self.df['r_nMMEJ']=(self.df['r_nMMEJ']*theta_a)/((self.df['r_nMMEJ']*theta_a)+(self.df['r_nNHEJ'])*(1-theta_a))
         self.df['r_nNHEJ'] = 1 - self.df['r_nMMEJ']
         
         # Multiplying realignment wigths and Likelihoods
@@ -176,32 +174,39 @@ class EMq:
         self.n_variants = len(np.unique(np.array(self.df['variant_id'])))
         self.dist_bias = 1*10**-4
 
-        # Creating an initial distribution of indel length over the whole dataset       
-        # MMEJ initial distribution
+        #---- Initialize the distributions of indel lengths for MMEJ and NHEJ  ------------------------
         mmej_init_dist = np.array([(len(self.df.loc[self.df['indel_len'] == i, 'variant_id'].unique())/
                             self.n_variants) for i in range(1,(self.window_size+1))])
-
         mmej_init_dist = mmej_init_dist + (self.dist_bias)
         self.indel_len_dist_mmej = np.array([(i/mmej_init_dist.sum()) for i in mmej_init_dist])
         
-        # NHEJ initial distribution
         nhej_init_dist = np.array([(len(self.df.loc[((self.df['indel_len'] == i) & 
                                                 (self.df['del_mmej_cand'].isna() == True)), 'variant_id'].unique())
-                                        /(len(self.df.loc[(self.df['del_mmej_cand'].isna() == True), 'variant_id'].unique())+1)) 
-                                                for i in range(1,(self.window_size+1))])
+                                        /(len(self.df.loc[(self.df['del_mmej_cand'].isna() == True), 'variant_id'].unique())+1)) for i in range(1,(self.window_size+1))])
         nhej_init_dist = nhej_init_dist + (self.dist_bias)
         self.indel_len_dist_nhej = np.array([(i/nhej_init_dist.sum()) for i in nhej_init_dist])
+        #print(sum(self.indel_len_dist_mmej)) #fabri: they look a bit weird. first element is very small. they sum to 1.
+        #print(sum(self.indel_len_dist_nhej))
 
-        #################### Try just taking same dist as MMEJ and see if there is any differnece at all ####################
         # In cases were there are 0 NHEJ, the distribution takes 0.9 of the values of the MMEJ
         if all(nhej_init_dist) == 0:
             nhej_init_dist = np.array(mmej_init_dist) * 0.9
             nhej_init_dist = np.array([i/nhej_init_dist.sum() for i in nhej_init_dist])
 
         
-        self.df.loc[:, 'motif_position'] = self.df.apply(lambda x: self.get_motif_pos(motif=x['del_mmej_cand'], 
-                    context_seq=x[f'ref_context_seq_{self.window_size}bp']), axis=1)
+        #---- Initialize the vectors of motif positions for each indel  ------------------------
+        #self.df.loc[:, 'motif_position'] = self.df.apply(lambda x: self.get_motif_pos(motif=x['del_mmej_cand'], 
+        #            context_seq=x[f'ref_context_seq_{self.window_size}bp']), axis=1)
+
+        print("fetch motif positions")
+        self.df.loc[:,'motif_position']=self.df['del_mmej_motif_pos'].fillna("-999")
+        self.df.loc[:,'motif_position']=self.df['motif_position'].str.split(",") 
+        self.df['motif_position'] = self.df['motif_position'].apply(lambda x: list(map(int, x)))
+        self.df['motif_position'] = self.df['motif_position'].apply(lambda x: [num for num in x if num >= 0])
         
+        #print(self.df['motif_position'])
+        print("Start EM loop")
+
         not_converged=True
         self.iter = 0
         while not_converged:

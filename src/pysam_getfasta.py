@@ -65,7 +65,8 @@ def get_motifs_pos(ref, CHR, POS, motif, windowsize):
     context = ref.fetch(CHR,POS-windowsize ,POS+windowsize).upper()
     mmej_motif_pos = np.array([m.end() for m in re.finditer(motif, context, overlapped=True)])
 
-    mmej_motif_pos = mmej_motif_pos - (len(context)/2)
+    mmej_motif_pos = mmej_motif_pos - (len(context)/2)-1 #-1 makes it 1-based and starting after the break (so 1st pos after break is 1);
+# This also is such that 0 position is now -1 (last dimer)
     #mmej_motif_pos = mmej_motif_pos[(mmej_motif_pos>(-1*small_window)) &
 #                        (mmej_motif_pos<(small_window))]
     mmej_motif_pos = mmej_motif_pos.tolist()
@@ -89,8 +90,8 @@ def get_motifs_freqs(ref, CHR, POS, large_window, small_window, motif, indel_typ
                             (mmej_motif_pos > ((-1)*small_window)))].shape[0]
     motif_freq_small = round(motif_count_small/(small_window-len(motif)), 5)
     mmej_motif_pos = mmej_motif_pos[(mmej_motif_pos>(-1*small_window)) &
-                        (mmej_motif_pos<(small_window))]
-    mmej_motif_pos = mmej_motif_pos.tolist()
+                        (mmej_motif_pos<(small_window))]-1
+    mmej_motif_pos = mmej_motif_pos.astype(int).tolist()
     if len(mmej_motif_pos)>0:
         out = ''
         for i in mmej_motif_pos:
