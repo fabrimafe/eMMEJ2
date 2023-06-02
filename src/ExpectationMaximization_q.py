@@ -36,7 +36,7 @@ class EMq:
         self.window_size = window_size
         #self.MM_lk = MM_lk
         self.log = pd.DataFrame(columns=['MMEJ_theta', 'NHEJ_theta', 'minus_log_likelihood'])
-        self.indel_length_dist_log = pd.DataFrame(columns=['MMEJ_indel_len_dist', 'NHEJ_indel_len_dist'])
+        #self.indel_length_dist_log = pd.DataFrame(columns=['MMEJ_indel_len_dist', 'NHEJ_indel_len_dist'])
         # exeption handling
         assert (self.df['indel_len'].max() < window_size), f"Window size must be at least the window size that was used for RMdetector.pf, current window size={window_size}"
         self.EM_main_loop(theta_a=self.initial_theta)
@@ -61,8 +61,12 @@ class EMq:
         self.log.loc[self.iter, 'MMEJ_theta'] = theta_a
         self.log.loc[self.iter, 'NHEJ_theta'] = 1 - theta_a
         self.log.loc[self.iter, 'minus_log_likelihood'] = LL
-        self.indel_length_dist_log.loc[self.iter, 'MMEJ_indel_len_dist'] = self.indel_len_dist_mmej
-        self.indel_length_dist_log.loc[self.iter, 'NHEJ_indel_len_dist'] = self.indel_len_dist_nhej
+        if hasattr(self, 'indel_length_dist_log'):
+            self.indel_length_dist_log=pd.concat([self.indel_length_dist_log,pd.DataFrame(["MMEJ"]+self.indel_len_dist_mmej.tolist()).T],ignore_index=True)
+            self.indel_length_dist_log=pd.concat([self.indel_length_dist_log,pd.DataFrame(["NHEJ"]+self.indel_len_dist_nhej.tolist()).T],ignore_index=True)
+        else:
+            self.indel_length_dist_log=pd.DataFrame(["MMEJ"]+self.indel_len_dist_mmej.tolist()).T
+            self.indel_length_dist_log=pd.concat([self.indel_length_dist_log,pd.DataFrame(["NHEJ"]+self.indel_len_dist_nhej.tolist()).T],ignore_index=True)
 
     def get_motif_pos(self,context_seq:str, 
                     motif: str) -> float:
@@ -112,9 +116,9 @@ class EMq:
         """
         indel_len_dist = np.array([(self.df.loc[(self.df['indel_len'] == i), mechanism].sum() /
                     self.df.loc[:, mechanism].sum()) for i in range(1,(self.window_size+1))], dtype="float")
-        # adding some bais for regularization
+        # adding a bias for regularization
         indel_len_dist = indel_len_dist + (self.dist_bias)
-        indel_len_dist = np.array([(i/indel_len_dist.sum()) for i in indel_len_dist])
+        #indel_len_dist = np.array([(i/indel_len_dist.sum()) for i in indel_len_dist])
         return indel_len_dist
 
     def E_step(self, theta_a: float)-> pd.Series:
@@ -147,15 +151,13 @@ class EMq:
         
     def M_step(self) -> float:
         """
-        A function that performes the N-step as follow:
-        Avereging the E-step vector
-        Rerurns:
-            The Avg value of the E-step vector (float)
+        A function that performs the Maximization step when maximizing by indel-length.
         """
-        # update dist
+        # maximize indel length distributions
         self.indel_len_dist_mmej = self.get_indel_length_dist(mechanism='r_nMMEJ')
         self.indel_len_dist_nhej = self.get_indel_length_dist(mechanism='r_nNHEJ')
-        # update theta_a_t
+        print(self.indel_len_dist_mmej[0:10])
+        # maximize the proportion of MMEJ 
         theta_a_t = self.df.loc[:,'r_nMMEJ'].sum()/self.n_variants
         return theta_a_t
 
@@ -204,9 +206,7 @@ class EMq:
         self.df['motif_position'] = self.df['motif_position'].apply(lambda x: list(map(int, x)))
         self.df['motif_position'] = self.df['motif_position'].apply(lambda x: [num for num in x if num >= 0])
         
-        #print(self.df['motif_position'])
         print("Start EM loop")
-
         not_converged=True
         self.iter = 0
         while not_converged:
