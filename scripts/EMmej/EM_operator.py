@@ -67,6 +67,9 @@ all_args.add_argument("-l", "--logs",
 all_args.add_argument("-pd", "--posteriordecoding", 
     required=False, default="EM_posterior_decoding.tsv",
       help="logs file (string)")
+all_args.add_argument("-ildt", "--indel_length_distribution_type", 
+    required=False, default="full",
+      help="type of distribution of indel length. Options are full, uniform, savitzky_golay") #poisson. maybe I could just say smoothed
 
 args = vars(all_args.parse_args())
 
@@ -76,6 +79,7 @@ prob_NHEJ = float(args['initial_proportion_NHEJ'])
 convergence_threshold=args['convergence']
 outfile=args['outputfile']
 logs_outputfile=args['logs']
+indel_length_distribution_type=args['indel_length_distribution_type']
 posteriordecodingfile=args['posteriordecoding']
 
 Dtypes = {'CHR': str, 'POS': int, 'original_pos': str, 'variant_id': str,'variant_id_N': str,
@@ -139,7 +143,7 @@ if args['EMalgorithm']==1:
     EMq_obj = EMq(data=df,
                 initial_theta=0.1,
                 convergence_threshold=args['convergence'],
-                window_size=args['windowsize']) #,
+                window_size=args['windowsize'], indel_length_distribution_type=indel_length_distribution_type) #,
 #                MM_lk='del_mmej_lk')
 
     # print(f'EMq final theta MMEJ = {EMq_obj.theta_a}')

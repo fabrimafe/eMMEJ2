@@ -9,13 +9,16 @@ import numpy as np
 #import matplotlib.cm as cm
 import seaborn as sns
 
+
+from scipy.signal import savgol_filter
+
 pd.set_option('display.max_columns', 200)
 
 class EMq:
     def __init__(self, data: pd.DataFrame, 
                 initial_theta: float,
                 convergence_threshold: float,
-                window_size: int) -> float: #, 
+                window_size: int, indel_length_distribution_type: str) -> float: #, 
                 #MM_lk: float) -> float:
         """
         This class encapsulate all steps that is needed in order
@@ -33,6 +36,7 @@ class EMq:
         self.df = data
         self.initial_theta = initial_theta
         self.convergence_threshold = convergence_threshold
+        self.indel_length_distribution_type = indel_length_distribution_type
         self.window_size = window_size
         #self.MM_lk = MM_lk
         self.log = pd.DataFrame(columns=['MMEJ_theta', 'NHEJ_theta', 'minus_log_likelihood'])
@@ -156,7 +160,22 @@ class EMq:
         # maximize indel length distributions
         self.indel_len_dist_mmej = self.get_indel_length_dist(mechanism='r_nMMEJ')
         self.indel_len_dist_nhej = self.get_indel_length_dist(mechanism='r_nNHEJ')
-        print(self.indel_len_dist_mmej[0:10])
+        if self.indel_length_distribution_type == "uniform":
+                self.indel_len_dist_mmej.fill(1/len(self.indel_len_dist_mmej))
+                self.indel_len_dist_nhej.fill(1/len(self.indel_len_dist_nhej))
+                self.indel_len_dist_mmej[0]=0
+                self.indel_len_dist_nhej[0]=0
+        elif self.indel_length_distribution_type == "savitzky_golay":
+                #https://stackoverflow.com/questions/20618804/how-to-smooth-a-curve-for-a-dataset
+                nhej_sg=savgol_filter(self.indel_len_dist_nhej, 50, 1) 
+                mmej_sg=savgol_filter(self.indel_len_dist_mmej, 50, 1) 
+                self.indel_len_dist_nhej=nhej_sg
+                self.indel_len_dist_mmej=mmej_sg
+                self.indel_len_dist_mmej[0]=0
+                self.indel_len_dist_nhej[0]=0
+        self.indel_len_dist_nhej=self.indel_len_dist_nhej/np.sum(self.indel_len_dist_nhej)
+        self.indel_len_dist_mmej=self.indel_len_dist_mmej/np.sum(self.indel_len_dist_mmej)
+
         # maximize the proportion of MMEJ 
         theta_a_t = self.df.loc[:,'r_nMMEJ'].sum()/self.n_variants
         return theta_a_t
