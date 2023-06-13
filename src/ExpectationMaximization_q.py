@@ -1,9 +1,11 @@
 """
-This module is an impementation of the EM algorithm
+Module implementing an indel-length based Expectation Maximization algorithm to estimate the proportion
+of different indel-inducing molecular mechanisms
 """
 import regex as re
 import pandas as pd
 import numpy as np
+import ast
 
 #import matplotlib.pyplot as plt
 #import matplotlib.cm as cm
@@ -18,7 +20,7 @@ class EMq:
     def __init__(self, data: pd.DataFrame, 
                 initial_theta: float,
                 convergence_threshold: float,
-                window_size: int, indel_length_distribution_type: str) -> float: #, 
+                window_size: int, indel_length_distribution_type: str, MH_lengths: list) -> float: #, 
                 #MM_lk: float) -> float:
         """
         This class encapsulate all steps that is needed in order
@@ -104,7 +106,8 @@ class EMq:
         """
         L here is the likelihood that we used to weigh the q
         """
-        if type(motif) == str:
+#        if type(motif) == str:
+        if len(motif)>0:
             obs_len_freq = np.take(a=self.indel_len_dist_mmej, indices=obs_len)
             indel_len_sum = np.take(a=self.indel_len_dist_mmej,indices=indel_pos).sum()
             p_MMEJ = (obs_len_freq/indel_len_sum) #*L #
@@ -127,13 +130,11 @@ class EMq:
 
     def E_step(self, theta_a: float)-> pd.Series:
         """
-        q here is allowed to be weighted by a likelihood coming from Markov model.
-        *** Currently disabled in gel_L,
-            so that only the distribution of indel lenghts is considered. ***
+        Expectation step
         """
         # update P(indel l | MMEJ) and P(indel l | NHEJ)
         self.df.loc[: ,['r_nMMEJ', 'r_nNHEJ']] = np.array(
-            self.df.apply(lambda x: self.get_conditional_prob_mechanisms(motif=x['del_mmej_cand'], 
+            self.df.apply(lambda x: self.get_conditional_prob_mechanisms(motif=x['del_mmej_cand'][0], 
                     indel_pos=x['motif_position'], obs_len=(x['indel_len']-1)), #, L=x[self.MM_lk]), 
                     result_type='expand', axis=1))
         #print(self.df['r_nMMEJ'])
@@ -220,9 +221,13 @@ class EMq:
         #            context_seq=x[f'ref_context_seq_{self.window_size}bp']), axis=1)
 
         print("fetch motif positions")
-        self.df.loc[:,'motif_position']=self.df['del_mmej_motif_pos'].fillna("-999")
-        self.df.loc[:,'motif_position']=self.df['motif_position'].str.split(",") 
-        self.df['motif_position'] = self.df['motif_position'].apply(lambda x: list(map(int, x)))
+        imhl=0
+        self.df.loc[:,'motif_position']=self.df['del_mmej_motif_pos'].apply(lambda x: x[0])
+        self.df['motif_position'] = self.df['motif_position'].apply(lambda x: '-9999' if x=='' else x ) 
+        self.df.loc[:,'motif_position']=self.df['motif_position'].str.split(",") #.values.tolist()
+        self.df['motif_position'] = self.df['motif_position'].apply(lambda x: np.array(x, dtype=np.int))
+        #print(self.df.loc[:,'motif_position'])
+        
         self.df['motif_position'] = self.df['motif_position'].apply(lambda x: [num for num in x if num >= 0])
         
         print("Start EM loop")
@@ -242,3 +247,14 @@ class EMq:
         self.del_MMEJ_post_decoding = self.df.loc[:, 'r_nMMEJ']
         self.del_NHEJ_post_decoding = self.df.loc[:, 'r_nNHEJ']
         self.theta_a = theta_a
+
+
+def sortdesc_list_zerofirst(lst):
+    """
+    sort a list in descending order but keeping 0 first
+    """
+    zeros = [x for x in lst if x == 0]
+    non_zeros = [x for x in lst if x != 0]
+    sorted_non_zeros = sorted(non_zeros, reverse=True)
+    sorted_list = zeros + sorted_non_zeros
+    return sorted_list

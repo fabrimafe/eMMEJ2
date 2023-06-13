@@ -14,8 +14,10 @@ import pandas as pd
 import numpy as np
 from pysam import FastaFile
 import math
+import ast
 
 from ExpectationMaximization_q import EMq
+from ExpectationMaximization_q import sortdesc_list_zerofirst
 from pysam_getfasta import *
 
 pd.options.display.max_colwidth = 3100
@@ -70,6 +72,9 @@ all_args.add_argument("-pd", "--posteriordecoding",
 all_args.add_argument("-ildt", "--indel_length_distribution_type", 
     required=False, default="full",
       help="type of distribution of indel length. Options are full, uniform, savitzky_golay") #poisson. maybe I could just say smoothed
+all_args.add_argument("-mhl", "--MH_lengths", required=False ,default=2,
+      help="a flag that specify the specific MH length that one wants to analyze, default is all MH lengths")
+
 
 args = vars(all_args.parse_args())
 
@@ -81,6 +86,9 @@ outfile=args['outputfile']
 logs_outputfile=args['logs']
 indel_length_distribution_type=args['indel_length_distribution_type']
 posteriordecodingfile=args['posteriordecoding']
+MH_lengths=args['MH_lengths'].split(",")
+MH_lengths = [int(x) for x in MH_lengths]
+MH_lengths=sortdesc_list_zerofirst(MH_lengths)
 
 Dtypes = {'CHR': str, 'POS': int, 'original_pos': str, 'variant_id': str,'variant_id_N': str,
              'direction':int,'ANC': str, 
@@ -117,13 +125,16 @@ col_names = ['CHR',
         'snap_motif_pos', 'snap_freq_small_window', 'snap_freq_large_window']
 
 path_to_data = args["vcf"]
-#df = pd.read_csv(path_to_data, sep="\t", header=0, dtype=Dtypes, names=col_names) # skiprows=1,
 df = pd.read_csv(path_to_data, sep="\t") #, header=0, dtype=Dtypes, names=col_names) # skiprows=1,
 
 # take deletions only
 df = df.loc[(df['ANC'].str.len() > df['DER'].str.len()), :]
 fastafile=args['ref']
 refFA=FastaFile(fastafile)
+
+df['del_mmej_motif_pos'] = df['del_mmej_motif_pos'].apply(ast.literal_eval)
+df['del_mmej_cand'] = df['del_mmej_cand'].apply(ast.literal_eval)
+#df.loc[:, df.columns.str.startswith('del_mmej')] = df.loc[:, df.columns.str.startswith('del_mmej')].applymap(ast.literal_eval)
 
 ##########################################
 ### EM using indel length distribution ###
@@ -143,35 +154,15 @@ if args['EMalgorithm']==1:
     EMq_obj = EMq(data=df,
                 initial_theta=0.1,
                 convergence_threshold=args['convergence'],
-                window_size=args['windowsize'], indel_length_distribution_type=indel_length_distribution_type) #,
-#                MM_lk='del_mmej_lk')
+                window_size=args['windowsize'], 
+                indel_length_distribution_type=indel_length_distribution_type,
+                MH_lengths=MH_lengths)
 
-    # print(f'EMq final theta MMEJ = {EMq_obj.theta_a}')
     EMq_obj.log.to_csv(outfile,sep='\t', index=False)
     EMq_obj.indel_length_dist_log.to_csv(logs_outputfile,sep='\t', index=False)
     df['del_MMEJ_EMq_post_decoding'] = EMq_obj.del_MMEJ_post_decoding
     df['del_NHEJ_EMq_post_decoding'] = EMq_obj.del_NHEJ_post_decoding
     df.to_csv(posteriordecodingfile, sep='\t', index=False)
-    
-
-    if args['bootstrap']>0:
-        #boot_s = int(round(boot_size*(len(df)),0))
-        boot_s = args['bootsize']
-        boot_df = pd.DataFrame(columns=['boot_iter', 'MMEJ_theta', 'NHEJ_theta'])
-        for b in range((args['bootstrap']+1)):
-            sampled_variants = df['variant_id'].sample(n=boot_s,replace=True)
-            tmp_df = df.loc[df['variant_id'].isin(sampled_variants), :].copy()
-            EMq_obj = EMq(data=tmp_df,
-                    initial_theta=0.1,
-                    convergence_threshold=args['convergence'],
-                    window_size=args['windowsize'],
-                    MM_lk='del_mmej_lk')
-            boot_df.loc[b, 'boot_iter'] = b
-            boot_df.loc[b, 'MMEJ_theta'] = EMq_obj.theta_a
-            boot_df.loc[b, 'NHEJ_theta'] = (1-EMq_obj.theta_a)
-
-        boot_df.to_csv(posteriordecodingfile,sep='\t', index=False)
-
 
 ########################################
 ##### EM using motif probabilities #####

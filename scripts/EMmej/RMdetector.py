@@ -43,8 +43,8 @@ all_args.add_argument("-w", "--windowsize", required=False,
       help="size (in bp) of the context window (int)")
 
 # optional arguments, turned on by using the flag
-all_args.add_argument("-mhl", "--MH_length_early_stop", required=False ,default=0, 
-      help="a flag that specify the specific MH length that one wants to analyze, defult is all MH lengths")
+all_args.add_argument("-mhl", "--MH_lengths", required=False ,default=2, 
+      help="a flag that specify the specific MH length that one wants to analyze, default is all MH lengths")
 all_args.add_argument("-cr", "--CRISPR", required=False, action='store_true',default=False, 
       help="a flag to indicate if the algorithm performes on CRISPR data")
 all_args.add_argument("-anc", "--ancestral", required=False, action='store_true',default=False, 
@@ -67,6 +67,10 @@ args = vars(all_args.parse_args())
 #
 # 
 # Loading data
+
+MH_lengths=args['MH_lengths'].split(",")
+MH_lengths = [int(x) for x in MH_lengths]
+
 path_to_data = args["vcf"]
 Dtypes={'CHR':str, 'POS':int, 'REF':str, 'ALT':str, 'ANCESTRAL': int}
 col_names = ['CHR', 'POS', 'REF', 'ALT', 'ANCESTRAL']
@@ -157,10 +161,9 @@ df.loc[(df['indel_type'] == 'DEL'), 'indel_len'] = df.loc[:, 'ref_len'] - df.loc
 # --------------- Repair mechanism detection ---------------------------------------------
 
 indel_position = args['windowsize']
-#df.loc[:, 'DER'] = df.loc[:, 'DER'].str.upper() #fabri: this seems redundant. I commented it out. If it works remove.
-#df.loc[:, 'ANC'] = df.loc[:, 'ANC'].str.upper()
 
 #Define each row as a emMEJrealignment class, applyng class to every row (realignment) of dataset, which is define in MicroHomology_module_v3. In this class, methods for detection and manipulation.
+
 
 #First step, run 5'->3' (flip=False)---------->>>>>>>>>>
 microhomology_object = df.apply( lambda x: emMEJrealignment(
@@ -170,10 +173,10 @@ microhomology_object = df.apply( lambda x: emMEJrealignment(
                             indel_type=x['indel_type'],
                             flip=False,
                             include_context=args["include_context"],
-                            MH_len_early_stop=args['MH_length_early_stop'],
+                            MH_lengths=MH_lengths,
                             windowsize=args['windowsize'], 
                             refFA=refFA, chrom=x['CHR']), axis = 1)
-
+print("detection done")
 #create a dataframe (df2) by appending all the exported data (ex_data) from microhomology_object
 df2 = None
 for i in microhomology_object.index:
@@ -181,12 +184,14 @@ for i in microhomology_object.index:
         df2 = microhomology_object[i].ex_data
     else:
         df2 = pd.concat([df2, microhomology_object[i].ex_data])
-        
+
+print(df2.columns)       
 df2.reset_index(drop=True, inplace=True)
 df.reset_index(drop=True, inplace=True)
 df = df.join(df2, how = 'right')
 df['direction'] = 0
 
+print("appending done")
 #2nd step, run on flipped seq (3'->5'):--------->>>>>>>>
 #if crispr, look for ALL patterns ALSO on the flipped seq:-->
 if args['CRISPR']:
@@ -201,7 +206,7 @@ if args['CRISPR']:
                             indel_type=x['indel_type'],
                             flip=True,
                             include_context=args["include_context"],
-                            MH_len_early_stop=args['MH_length_early_stop'],
+                            MH_lengths=MH_lengths,
                             windowsize=args['windowsize'], 
                             refFA=refFA, chrom=x['CHR']), axis = 1)
 
@@ -223,6 +228,7 @@ if args['CRISPR']:
         lambda row: f"{row['variant_id']}.{row['direction']}", axis=1)
     
 # if not crispr, look for patterns (only for insertions, no deletion) on the fliped seq (3'->5'):--> 
+print("start insertions")
 if not args['CRISPR']:
     df_ins = df.loc[(df['indel_type'] == 'INS'), ['CHR', 'POS', 
         'ANC', 'DER', 'original_pos',
@@ -235,7 +241,7 @@ if not args['CRISPR']:
                                 indel_type=x['indel_type'],
                                 flip=True,
                                 include_context=args["include_context"],
-                                MH_len_early_stop=args['MH_length_early_stop'],
+                                MH_lengths=MH_lengths,
                                 windowsize=args['windowsize'], 
                                 refFA=refFA, chrom=x['CHR']), axis = 1)
 
@@ -255,7 +261,7 @@ if not args['CRISPR']:
 df.sort_values(by=['CHR', 'POS'], axis=0, ascending=True, inplace=True)
 df.reset_index(drop=True, inplace=True)
 
-
+print("save results")
 #Use logging module to have a nice log output
 logging.debug(f'## MMEJ detection is done({args["vcf"]})')
 df.info(buf=buf)
@@ -264,9 +270,10 @@ logging.info(buf.getvalue())
 #Rename some output variables
 df['snap_mh2_len'] = df['snap_mh2'].str.len()
 df['loop_mh2_len'] = df['loop_mh2'].str.len()
-df.loc[(df['del_mmej'] == True), 'del_motif_d'] = df.loc[(df['del_mmej'] == True), 'indel_len'] - df.loc[(df['del_mmej'] == True), 'del_mmej_cand_len']
+#df.loc[(df['del_mmej'] == True), 'del_motif_d'] = df.loc[(df['del_mmej'] == True), 'indel_len'] - df.loc[(df['del_mmej'] == True), 'del_mmej_cand_len'].apply(lambda x: x[0]) #useful for markov model. but easier to do it later, after I reconvert string into lists
 
 #Create output table of positions. Unfortunately, it works only for one pattern for mechanism.
+"""
 mechanism = ['del_mmej', 'SD_loop_out', 'SD_snap_back']
 patterns = ['del_mmej_cand', 'loop_repeat_pat', 'snap_repeat_pat']
 cols = [['del_mmej_motif_pos', 'del_mmej_freq_small_window', 'del_mmej_freq_large_window'],
@@ -278,12 +285,13 @@ for mech,pat,col in zip(mechanism, patterns, cols):
             (df[mech] == True),:].apply(lambda row: get_motifs_freqs(
                 ref=refFA, CHR=row['CHR'], POS=row['POS'], large_window=1000,
                 small_window=args['windowsize'],
-                    motif=row[pat], indel_type=row['indel_type']),
+                    motifs=row[pat], indel_type=row['indel_type']),
                     axis=1, result_type='expand')
+    print("1done")
     tmp_df.rename(columns={0:col[0],1:col[1],2:col[2]},inplace=True)
     df.loc[
         (df[mech] == True),col] = tmp_df
-
+"""
 
 # ----------- Make this more efficient -------------------------------------
 
@@ -295,7 +303,7 @@ df.loc[df['SD_loop_out']==True,'loop_repeat_pat_len'] = df.loc[df['SD_loop_out']
 col_to_save = ['CHR', 'POS', 'original_pos', 'variant_id', 'direction', #'REF','ALT',
             'ANC','DER', 'indel_type', 'indel_len',  
             # deletions
-            'del_mmej', 'del_mmej_cand', 'del_mmej_marked_on_ref', 'del_mmej_marked',
+            'del_mmej', 'del_mmejl','del_mmej_cand', 'del_mmej_marked_on_ref', 'del_mmej_marked',
             'del_last_dimer','del_mmej_cand_len',
             # snap-back
             'SD_snap_back', 'snap_mmej_marked', 'snap_P1', 'snap_P2','snap_mh1', 
@@ -306,9 +314,9 @@ col_to_save = ['CHR', 'POS', 'original_pos', 'variant_id', 'direction', #'REF','
             'SD_loop_out','loop_mmej_marked', 'loop_P2',
             'loop_mh2','loop_repeat_pat', 'loop_repeat_pat_len',
             'loop_last_dimer', 'loop_dist_between_reps', 
-            'del_mmej_motif_pos', 'del_mmej_freq_small_window', 'del_mmej_freq_large_window',
-            'loop_motif_pos', 'loop_freq_small_window', 'loop_freq_large_window',
-            'snap_motif_pos', 'snap_freq_small_window', 'snap_freq_large_window',
+            'del_mmej_motif_pos', 'del_mmej_freq_small', 'del_mmej_freq_large',
+            #'loop_motif_pos', 'loop_freq_small_window', 'loop_freq_large_window',
+            #'snap_motif_pos', 'snap_freq_small_window', 'snap_freq_large_window',
             # polymerase slippage
             'pol_slip', 'pol_slip_submotif', 'pol_slippage_times',
             'pol_slippage_last_dimer', 'pol_slip_motif_len']

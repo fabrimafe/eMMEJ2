@@ -96,6 +96,35 @@ def get_motifs_freqs(ref, CHR, POS, large_window, small_window, motif, indel_typ
         out = ''
         for i in mmej_motif_pos:
             out = f"{out},{i}"
-        return np.array((out[1:], motif_freq_small, motif_freq_large))
+        return [out[1:], motif_freq_small, motif_freq_large] #np.array
     else:
-        return np.array((np.nan, motif_freq_small, motif_freq_large))
+        return [np.nan, motif_freq_small, motif_freq_large] #np.array
+
+"""
+def get_motifs_freqs(ref, CHR, POS, large_window, small_window, motifs, indel_type):
+    myresults=list()
+    context = ref.fetch(CHR,POS-large_window ,POS+large_window).upper()
+    if not isinstance(motifs, list):
+        print("notlist")
+        motifs=list(motifs)
+    for motif in motifs:
+        print(motif)
+        mmej_motif_pos = np.array([m.end() for m in re.finditer(motif, context, overlapped=True)])
+        mmej_motif_pos = mmej_motif_pos - (len(context)/2)
+        motif_count_large = mmej_motif_pos.shape[0]
+        motif_freq_large = round(motif_count_large/(large_window-len(motif)), 5)
+        motif_count_small = mmej_motif_pos[((mmej_motif_pos < small_window) &
+                            (mmej_motif_pos > ((-1)*small_window)))].shape[0]
+        motif_freq_small = round(motif_count_small/(small_window-len(motif)), 5)
+        mmej_motif_pos = mmej_motif_pos[(mmej_motif_pos>(-1*small_window)) &
+                        (mmej_motif_pos<(small_window))]-1
+        mmej_motif_pos = mmej_motif_pos.astype(int).tolist()
+        if len(mmej_motif_pos)>0:
+            out = ''
+            for i in mmej_motif_pos:
+                out = f"{out},{i}"
+            myresults.append(np.array((out[1:], motif_freq_small, motif_freq_large)))
+        else:
+            myresults.append(np.array((np.nan, motif_freq_small, motif_freq_large)))
+    return(myresults)
+"""

@@ -29,16 +29,19 @@ class emMEJrealignment:
     def __init__(self, 
                 ANC: str, DER: str,
                 indel_type: str, flip: bool, include_context: bool,
-                windowsize: int, refFA: str, MH_len_early_stop: int, 
+                windowsize: int, refFA: str, MH_lengths: list, 
                 chrom: str, pos_on_chr:int):
         self.indel_position = windowsize #fabri: OK, this is weird but try to understand that.
         self.indel_type = indel_type 
         self.flip = flip        
         self.include_context = include_context
-
-        if MH_len_early_stop != 0:
-            self.MH_early_stop = int(MH_len_early_stop)
-        else: self.MH_early_stop = "None"
+        self.refFA=refFA
+        self.chrom=chrom
+        self.pos_on_chr=pos_on_chr
+       
+        self.MH_lengths=MH_lengths 
+#        if MH_lengths[0] == 0:
+#            self.MH_lengths = "None"
 
         if (self.indel_type == 'INS'):  # cropping indel sequence to the right size.
             self.indel_length = len(DER) - 1
@@ -48,21 +51,21 @@ class emMEJrealignment:
             self.indel_length = len(ANC) - 1
             self.ANC = ANC[len(DER):]
             self.INDEL = DER[len(DER):]
-            windowsize = windowsize + self.indel_length
-            self.indel_position = windowsize
+            self.windowsize = windowsize + self.indel_length
+            self.indel_position = self.windowsize
 
         self.ref_seq = get_ref_context(refFA=refFA, chrom=chrom,indel_pos=pos_on_chr,
-                            context_window_size=windowsize,indel_seq=self.INDEL)
+                            context_window_size=self.windowsize,indel_seq=self.INDEL)
         self.ref_seq = self.ref_seq.upper()
        
-        # getting sequence contexts
+        # INSERTIONS:
+        #getting sequence contexts
         if (self.indel_type == 'INS'):
             self.mutant_sequence = get_mutant_context(
                         reference_contex=self.ref_seq,
                         alt=DER,
                         ref=ANC,
                         window_size=(windowsize))
-
             # Flipping sequences (looking upward, i.e. in 5' direction from indel, without complement)
             if self.flip:
                 self.ref_seq = self.ref_seq[::-1]
@@ -70,13 +73,14 @@ class emMEJrealignment:
                 self.ANC = self.ANC[::-1]
                 self.INDEL = self.INDEL[::-1]
                 self.indel_position = self.indel_position + self.indel_length +1
-            
+        
+        # DELETIONS    
         if (self.indel_type == 'DEL'):
             if self.flip:
                 self.ANC = self.ANC[::-1]
                 self.indel_position = self.indel_position -self.indel_length +1
                 self.ref_seq = self.ref_seq[::-1]
-            # generating the mutant context #fabri: the mutant context is the alternative?
+            #fabri: the mutant context is the alternative?
             self.mutant_sequence = get_mutant_context(
                         reference_contex=self.ref_seq,
                         alt=self.INDEL, 
@@ -119,8 +123,8 @@ class emMEJrealignment:
         """
         mmej_motifs = pd.Series([str(self.ANC)[i:] for i in 
                               range((self.indel_length-1), -1, -1)])
-        if self.MH_early_stop != "None":
-            mmej_motifs = mmej_motifs[mmej_motifs.str.len() == self.MH_early_stop]
+        #if MH_length != "None":
+              #mmej_motifs = mmej_motifs[mmej_motifs.str.len() == MH_length]
         self.mmej_motifs = mmej_motifs.to_list()
         
     def first_MH_indicator(self): 
@@ -180,43 +184,78 @@ class emMEJrealignment:
         """
         # set default values for mmej_cand
         del_mmej = False
-        del_mmej_cand, del_mmej_cand_len ,del_mmej_marked= np.nan, np.nan, np.nan
-        del_last_dimer, mmej_cand = np.nan ,np.nan
-        distance_to_indel_position, del_mmej_marked_on_ref = np.nan, np.nan
+        del_mmejl = list()
+        del_mmej_cand, del_mmej_cand_len ,del_mmej_marked= list(), list(), list() #np.nan
+        del_last_dimer, mmej_cand = list() , list()
+        distance_to_indel_position, del_mmej_marked_on_ref = list(), list()
+        del_mmej_motif_pos, del_mmej_freq_large, del_mmej_freq_small = list(), list(), list()
         # 1st condition:
         self.first_MH_finder() # finding all possible MH motifs
         self.first_MH_indicator()
 
         # 2nd condition
         # reverse integrating over all motifs and look whether it exists before the break. If not breaks and longest is considered as the potential MH
+        mmej_cand_position = self.indel_length + 1 #fabri: why is this within the loop? should be above for efficiency
+        imhl=-1
         for mh_motif in self.mmej_motifs[::-1]:
-            if mh_motif == self.ref_genome_up[-len(mh_motif):]:
-                del_mmej = True
-                mmej_cand = del_mmej_cand = mh_motif
-                mmej_cand_position = self.indel_length + 1 #fabri: why is this within the loop? should be above for efficiency
-                #also, ugly and misleading name for variable. This is better as simply indel_length+1, or indel_length_plus1
-                self.distance_to_indel_position = self.indel_length - len(mmej_cand)
-                break
-            else: continue
-        
-        # get sequences with marked components of the mechanism pattern 
-        if del_mmej:
-            del_mmej_marked = self.del_mutant_mmej_marked(mmej_cand)
-            del_mmej_marked_on_ref = self.del_mmej_marked_on_reference(mmej_cand,
-                                       mmej_cand_position)
-        #define last dimer, because used later for 2nd order Markov Chain                
-            if len(mmej_cand) >= 2: del_last_dimer = mmej_cand[-2:]
-            else: del_last_dimer = self.ref_genome_up[-2] + mmej_cand
-            del_last_dimer = del_last_dimer.upper()
-            del_mmej_cand_len = int(len(del_mmej_cand))
-
+              if mh_motif == self.ref_genome_up[-len(mh_motif):]:
+                    if ( 0 in self.MH_lengths and len(mh_motif)>max(self.MH_lengths) and imhl==-1) or (len(mh_motif) in self.MH_lengths):
+                          imhl=imhl+1
+                          del_mmej = True
+                          del_mmejl.append(True)
+                          mmej_cand.append(mh_motif)
+                          del_mmej_cand.append(mh_motif)
+                    #also, ugly and misleading name for variable. This is better as simply indel_length+1, or indel_length_plus1
+                          distance_to_indel_position.append(self.indel_length - len(mmej_cand[imhl]))
+                          del_mmej_marked.append(self.del_mutant_mmej_marked(mmej_cand[imhl]))
+                          del_mmej_marked_on_ref.append(self.del_mmej_marked_on_reference(mmej_cand[imhl],mmej_cand_position))
+                          #define last dimer, because used later for 2nd order Markov Chain                
+                          if len(mmej_cand[imhl]) >= 2: del_last_dimer.append(mmej_cand[imhl][-2:])
+                          else: del_last_dimer.append(self.ref_genome_up[-2] + mmej_cand[imhl])
+                          del_last_dimer[imhl]= del_last_dimer[imhl].upper()
+                          del_mmej_cand_len.append(int(len(del_mmej_cand[imhl])))
+                          temp=get_motifs_freqs(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr, large_window=1000,
+                               small_window=self.windowsize,motif=mmej_cand[imhl],indel_type='DEL')
+                          del_mmej_motif_pos.append(temp[0])
+                          del_mmej_freq_small.append(temp[1])
+                          del_mmej_freq_large.append(temp[2])
+        if not del_mmej:
+              for i in self.MH_lengths:
+                    del_mmej_cand.append('')
+                    del_mmejl.append(False)
+              #      del_mmej_motif_pos.append([])
+              distance_to_indel_position=np.nan
+              del_mmej_cand_len=del_mmej_cand
+              del_mmej_marked=del_mmej_cand
+              del_mmej_marked_on_refa=del_mmej_cand
+              del_mmej_freq_small=del_mmej_cand
+              del_mmej_freq_large=del_mmej_cand
+              del_mmej_motif_pos=del_mmej_cand
+              #del_mmej_cand,mmej_cand= np.nan, np.nan
+              self.distance_to_indel_position=np.nan
         else:
-            distance_to_indel_position = np.nan
-            del_mmej_marked_on_ref = np.nan
-            del_mmej = False
-            del_mmej_cand = mmej_cand
-            self.distance_to_indel_position = distance_to_indel_position
-        
+              for zz in range(len(self.MH_lengths)-len(mmej_cand)):
+                    mmej_cand.insert(0, '')     
+                    del_mmej_cand.insert(0,'')
+                    del_mmej_cand_len.insert(0,'')
+                    del_mmej_marked.insert(0,'')
+                    del_mmej_marked_on_ref.insert(0,'')
+                    del_mmej_motif_pos.insert(0,'')
+#                    del_mmej_motif_pos.insert(0,[])
+                    del_mmej_freq_small.insert(0,'')
+                    del_mmej_freq_large.insert(0,'')  
+                    del_mmejl.insert(0,False)  
+              #      del_last_dimer.insert(0,[])
+
+        del_mmej_cand=str(del_mmej_cand)
+        del_mmej_cand_len=str(del_mmej_cand_len)
+        del_mmej_marked=str(del_mmej_marked)
+        del_mmej_marked_on_ref=str(del_mmej_marked_on_ref)
+        del_last_dimer=str(del_last_dimer)
+        del_mmej_motif_pos=str(del_mmej_motif_pos)
+        del_mmej_freq_small=str(del_mmej_freq_small)
+        del_mmej_freq_large=str(del_mmej_freq_large)
+        del_mmejl=str(del_mmejl)
 #        print(mmej_cand)
 #        if not checkNaN(mmej_cand):
 #            del_mmej_motif_pos = np.array([m.end() for m in #positions are the end positions of the motif in the sequence (e.g. TA if sequence is TATATA haso indices 2,4,6 (1based))
@@ -224,9 +263,11 @@ class emMEJrealignment:
 #        else:
 #            del_mmej_motif_pos = ""
         _d = {
-            'del_mmej': del_mmej,'del_mmej_cand': del_mmej_cand,
+            'del_mmej': del_mmej, 'del_mmejl':del_mmejl, 'del_mmej_cand': del_mmej_cand ,
             'del_mmej_marked': del_mmej_marked ,'del_mmej_marked_on_ref':del_mmej_marked_on_ref,
-            'del_last_dimer':del_last_dimer, 'del_mmej_cand_len':del_mmej_cand_len
+            'del_last_dimer':del_last_dimer, 'del_mmej_cand_len':del_mmej_cand_len,
+            'del_mmej_motif_pos':del_mmej_motif_pos,'del_mmej_freq_small':del_mmej_freq_small,
+            'del_mmej_freq_large':del_mmej_freq_large 
             }
         
         self.del_out_dict = _d
@@ -491,8 +532,9 @@ class emMEJrealignment:
         """
         _colnames = [
             # deletions
-            'del_mmej', 'del_mmej_cand', 'del_mmej_marked' ,'del_mmej_marked_on_ref',
-            'del_last_dimer','del_mmej_cand_len',
+            'del_mmej', 'del_mmejl','del_mmej_cand', 'del_mmej_marked' ,'del_mmej_marked_on_ref',
+            'del_last_dimer','del_mmej_cand_len','del_mmej_motif_pos','del_mmej_freq_small',
+            'del_mmej_freq_large',
             # snap-back
             'SD_snap_back', 'snap_mmej_marked', 'snap_P1', 'snap_P2','snap_mh1', 
             'snap_mh2', 'snap_repeat_pat','snap_inv_comp_repeat_pat', 'snap_last_dimer',
@@ -503,10 +545,23 @@ class emMEJrealignment:
             # polymerase slippage
             'pol_slip', 'pol_slip_submotif', 'pol_slippage_times',
             'pol_slippage_last_dimer', 'pol_slip_motif_len']
-        
-        if self.include_context: _colnames = _colnames + ['ref_genome_context', 'mutant_sequence']
 
-        ex_df = pd.DataFrame(columns=_colnames)
+        _Dtypes={
+            'del_mmej':str, #'del_mmej_cand':object, #'del_mmej_marked':object ,'del_mmej_marked_on_ref':object,
+#            'del_last_dimer':object,'del_mmej_cand_len':object,
+            # snap-back
+            'SD_snap_back':str, 'snap_mmej_marked':str, 'snap_P1':str, 'snap_P2':str,'snap_mh1':str, 
+            'snap_mh2':str, 'snap_repeat_pat':str,'snap_inv_comp_repeat_pat':str, 'snap_last_dimer':str,
+            'snap_dist_between_reps':str,
+            # loop-out
+            'SD_loop_out':str,'loop_mmej_marked':str, 'loop_P2':str,'loop_mh2':str,'loop_repeat_pat':str,
+            'loop_last_dimer':str, 'loop_dist_between_reps':str,
+            # polymerase slippage
+            'pol_slip':str, 'pol_slip_submotif':str, 'pol_slippage_times':str,
+            'pol_slippage_last_dimer':str, 'pol_slip_motif_len':str}
+
+        if self.include_context: _colnames = _colnames + ['ref_genome_context', 'mutant_sequence']
+        ex_df = pd.DataFrame(columns=_colnames )#,dtype=_Dtypes)
         ex_df.loc[0,:] = np.nan
         # merging dicts from all paths
         d = {**self.del_out_dict, 
