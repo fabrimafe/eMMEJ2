@@ -160,9 +160,9 @@ if args['EMalgorithm']==1:
 
     EMq_obj.log.to_csv(outfile,sep='\t', index=False)
     EMq_obj.indel_length_dist_log.to_csv(logs_outputfile,sep='\t', index=False)
-    df['del_MMEJ_EMq_post_decoding'] = EMq_obj.del_MMEJ_post_decoding
-    df['del_NHEJ_EMq_post_decoding'] = EMq_obj.del_NHEJ_post_decoding
-    df.to_csv(posteriordecodingfile, sep='\t', index=False)
+#    df['del_MMEJ_EMq_post_decoding'] = EMq_obj.del_MMEJ_post_decoding
+#    df['del_NHEJ_EMq_post_decoding'] = EMq_obj.del_NHEJ_post_decoding
+#    df.to_csv(posteriordecodingfile, sep='\t', index=False)
 
 ########################################
 ##### EM using motif probabilities #####
@@ -297,8 +297,8 @@ if (args['EMalgorithm']!=1) & (xvcf_0.shape[0] > 3):
                 xvcf.drop(columns=['index'], inplace=True)
                 xvcf.rename(columns={'Estep': 'prob_alignment'}, inplace=True)
                 
-                xvcf.to_csv(posteriordecodingfile,
-                             sep="\t", index=False)
+                #xvcf.to_csv(posteriordecodingfile,
+                #             sep="\t", index=False)
 
     proportions_df.to_csv(outfile, 
                     sep='\t', index=False)
