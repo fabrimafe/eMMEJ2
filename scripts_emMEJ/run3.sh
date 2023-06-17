@@ -9,11 +9,11 @@ reference=/home/labs/alevy/fabrizio/workspace/ancestralstate/msa_arabidopsis/dat
 xfolder=~/workspace/guy/simulations/Athaliana/original_sims_EMmej_format/mini
 #xfolder=/home/labs/alevy/fabrizio/workspace/guy/rerun/03302023/Arabidopsis1001/filtered/mini #/home/labs/alevy/fabrizio/workspace/guy/rerun/03302023/Clark/subsampled1k/16/mini
 echo "run RM"
-python ./scripts/EMmej/RMdetector.py --vcf ${xfolder}/indels.vcf --ref $reference -o ${xfolder}/RMoutput.tsv -w 50 -ic -mhl 0,4,3,2,1 #2,1,0 #--anc
+python ./scripts/EMmej/RMdetector.py --vcf ${xfolder}/indels.vcf --ref $reference -o ${xfolder}/RMoutput.tsv -w 50 -ic -mhl 2 #2,1,0 #--anc
 echo "MM"
 #python ./scripts/EMmej/Markov_model_operator.py --vcf ${xfolder}/RMoutput.tsv --ref $reference -p markov -o ${xfolder}/MM_output.tsv
 echo "EM"
 #python ./scripts/EMmej/EM_operator.py --vcf ${xfolder}/RMoutput.tsv --ref $reference -o ${xfolder}/EM_output.tsv -e 1 -mhl 4 -ildt "savitzky_golay" #"uniform" -mhl 2,3,4,0
-python ./scripts/EMmej/EM_operator.py --vcf ${xfolder}/RMoutput.tsv --ref $reference -o ${xfolder}/EM_output.tsv -e 1 -mhl 0,4,3,2,1 -ildt "savitzky_golay" -c 0.000000001
+python ./scripts/EMmej/EM_operator.py --vcf ${xfolder}/RMoutput.tsv --ref $reference -o ${xfolder}/EM_output.tsv -e 1 -mhl 2 -ildt "savitzky_golay" -c 0.000000001
 
 

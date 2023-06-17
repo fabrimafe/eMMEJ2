@@ -50,7 +50,7 @@ class EMq:
         self.del_cols=[]
         self.del_cols.append('r_nNHEJ')
         for imhl in range(len(self.MH_lengths)):
-            self.del_cols.append("r_nMMEJ_MH"+str(imhl))
+            self.del_cols.append("r_nMMEJ_MH"+str(self.MH_lengths[imhl]))
             self.indel_len_dist.append(list())
         self.EM_main_loop(theta_0=self.initial_theta)
 
@@ -173,10 +173,10 @@ class EMq:
         self.df.loc[: ,'r_nNHEJ'] = np.array(
                     self.df.apply(lambda x: self.get_conditional_prob_mechanism_NHEJ(obs_len=(x['indel_len']-1)), result_type='expand', axis=1))
         for imhl in range(len(self.MH_lengths)):
-            namecol="r_nMMEJ_MH"+str(imhl)
+            namecol="r_nMMEJ_MH"+str(self.MH_lengths[imhl])
             self.df.loc[: , namecol] = np.array(
             self.df.apply(lambda x: self.get_conditional_prob_mechanism_from_motifpos(motif=x['del_mmej_cand'][imhl], 
-                    indel_pos=x["del_mmej_pos_mh"+str(imhl)], obs_len=(x['indel_len']-1),mhl=imhl), 
+                    indel_pos=x["del_mmej_pos_mh"+str(self.MH_lengths[imhl])], obs_len=(x['indel_len']-1),mhl=imhl), 
                     result_type='expand', axis=1))
         
         #print(self.df.loc[: ,self.del_cols])
@@ -185,7 +185,6 @@ class EMq:
         # calculating realignment wigths (realignment_w)
         #self.df['realignment_w'] = ((self.df['r_nMMEJ']*theta_a)+(self.df['r_nNHEJ'])*(1-theta_a))
         self.df[self.del_cols]=self.df[self.del_cols].multiply(theta_a, axis=1)
-#        print(self.df[self.del_cols])
         self.df['realignment_w'] = np.sum(self.df[self.del_cols],axis=1)
         self.df[self.del_cols]=self.df[self.del_cols].div(self.df['realignment_w'], axis=0) #now to save calculations I do here "Multiply by theta_a and normalization"
         self.update_log(theta_a=theta_a)
@@ -195,7 +194,7 @@ class EMq:
         # Multiply by theta_a and normalization
         #self.df['r_nMMEJ']=(self.df['r_nMMEJ']*theta_a)/((self.df['r_nMMEJ']*theta_a)+(self.df['r_nNHEJ'])*(1-theta_a))
         #self.df['r_nNHEJ'] = 1 - self.df['r_nMMEJ'] 
-        # Multiplying realignment wigths and Likelihoods
+        # Multiplying realignment weigths and Likelihoods
         #self.df['r_nMMEJ'] = self.df['r_nMMEJ'] * self.df['realignment_w']
         #self.df['r_nNHEJ'] = self.df['r_nNHEJ'] * self.df['realignment_w']
         self.df[self.del_cols]=self.df[self.del_cols].multiply(self.df['realignment_w'],axis=0)
@@ -267,7 +266,7 @@ class EMq:
 
         print("fetch motif positions")
         for imhl in range(len(self.MH_lengths)):
-            namecol="del_mmej_pos_mh"+str(imhl)
+            namecol="del_mmej_pos_mh"+str(self.MH_lengths[imhl])
             self.df.loc[:,namecol]=self.df['del_mmej_motif_pos'].apply(lambda x: x[imhl])
             #self.df[namecol] = self.df['del_mmej_motif_pos'].apply(lambda x: np.array(x[imhl], dtype=np.int))
             self.df[namecol] = self.df[namecol].apply(lambda x: '-9999' if x=='' else x ) 

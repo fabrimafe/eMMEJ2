@@ -47,6 +47,7 @@ class emMEJrealignment:
             self.indel_length = len(DER) - 1
             self.INDEL =  DER[len(ANC):] #fabri: is this for substitutions? Then why before length-1?
             self.ANC = ANC
+            self.windowsize = windowsize
         if (self.indel_type == 'DEL'): 
             self.indel_length = len(ANC) - 1
             self.ANC = ANC[len(DER):]
@@ -57,7 +58,7 @@ class emMEJrealignment:
         self.ref_seq = get_ref_context(refFA=refFA, chrom=chrom,indel_pos=pos_on_chr,
                             context_window_size=self.windowsize,indel_seq=self.INDEL)
         self.ref_seq = self.ref_seq.upper()
-       
+        
         # INSERTIONS:
         #getting sequence contexts
         if (self.indel_type == 'INS'):
@@ -159,6 +160,22 @@ class emMEJrealignment:
     3. The length of the repeat must be smaller then the indel_len.
     """
 
+    def find_subrepeat(self,x):
+        """
+        Function that finds the shortest (which is also the most frequent) perfectly-repeated submotif in a sequence. 
+        When no submotif is repeated, this corresponds to the actual sequence. 
+        The number or repeats is returned along the subrepeat.
+        """
+        subrepeat=x
+        nrepeats_old=1
+        for i in range(1,len(x)+1):
+            if len(x)%i==0:
+                 nrepeats=int(len(x)/i)
+                 if x[:i]*nrepeats==x and nrepeats>=nrepeats_old:
+                     nrepeats_old=nrepeats
+                     subrepeat=x[:i]
+        return([subrepeat,nrepeats_old])                 
+
     def microhomology_detection(self):
         # get seqs upstream and downstream
         self.get_seq_updownstream() 
@@ -171,10 +188,11 @@ class emMEJrealignment:
         if self.indel_type == 'INS': 
             self.sd_snap_back_MMEJ()
             self.sd_loop_out_MMEJ()
-            self.pol_slip()
+            self.pol_slip(xINDEL=self.INDEL)
 
         if self.indel_type == 'DEL': 
             self.deletion_MMEJ()
+            self.pol_slip(xINDEL=self.ANC)
 
 
     def deletion_MMEJ(self):
@@ -270,43 +288,43 @@ class emMEJrealignment:
             'del_mmej_freq_large':del_mmej_freq_large 
             }
         
-        self.del_out_dict = _d
-
-            
-    def pol_slip(self):
+        self.del_out_dict = _d         
+    
+    def pol_slip(self,xINDEL):
         """
         A function that looks for the pattern of a polymerase slippage, i.e. a submotif preceding the indel that is repeated tp form the indel
 
         """
-        submotif_befor_DSB="";submotif_after_DSB=""; #added to avoid bug in Guy's version
-        for i in range(1,len(self.INDEL)):
-            submotif_befor_DSB = self.DSB_up[-i:] #DSB_up (see up in glossary): context right before beginning of indel (-i bases).
-            submotif_after_DSB = self.INDEL[-i:]
-            if submotif_befor_DSB == submotif_after_DSB:
-                continue
-            else:
-                submotif_befor_DSB = submotif_befor_DSB[1:]
-                submotif_after_DSB = submotif_after_DSB[1:] #1: because the first position/index(0) does not fulfil the condition. So we take the motif after 0 (which is 1:).
-                break
-        if len(submotif_after_DSB) > 0:
-            submotif_pos = np.array([m.end() for m in #submotif_pos is the end positions of the submotif in the insertion sequence (e.g. TA if insertion is TATATA, so indices are 2,4,6 (1based))
-                reg.finditer(submotif_befor_DSB, self.INDEL, overlapped=False)])
-            #print(submotif_pos)
-            if submotif_befor_DSB*len(submotif_pos) == self.INDEL: #checking that by repeating a submotif I get indel right length and indel
-                pol_slip = True
-                pol_slip_submotif = submotif_befor_DSB
-                pol_slippage_times = len(submotif_pos)
+        subrepeat=self.find_subrepeat(xINDEL)
+        nrepeats_upstream=0
+        isrepeated=True
+        while isrepeated:
+            print("new")
+            nrepeats_upstream=nrepeats_upstream+1
+            upstream_repeat=self.DSB_up[(len(self.DSB_up)-len(subrepeat[0])*nrepeats_upstream):]
+            if upstream_repeat!=(subrepeat[0]*nrepeats_upstream):
+                 isrepeated=False
+                 nrepeats_upstream=nrepeats_upstream-1 
+                 #print(xINDEL+" - " +subrepeat[0] + "x" + str(nrepeats_upstream) + " - " + self.DSB_up+ " - " + self.DSB_down)
+        if nrepeats_upstream>1:
+            pol_slip = True
+            pol_slip_submotif = subrepeat[0]
+            pol_slippage_repeatsIndel = subrepeat[1]
+            pol_slippage_repeatsUpstream = nrepeats_upstream #NB:repeats upstream includes the indel, thus goes from 1 (only the indel) to many
+        else:
+            pol_slip = False
+            pol_slip_submotif = subrepeat[0]
+            pol_slippage_repeatsIndel = subrepeat[1]
+            pol_slippage_repeatsUpstream = 0
 
-                _d = { #pol_slip is flag whether is slippage or not
-                    'pol_slip': pol_slip,'pol_slip_submotif': pol_slip_submotif, #pol_slip_motif is the submotif
-                    'pol_slippage_times': pol_slippage_times , 
-                    'pol_slippage_last_dimer':submotif_befor_DSB[-2:], 'pol_slip_motif_len':len(pol_slip_submotif) #last dimer before insertion - reported here because we use it to start the chain for markov in MMEJ calcuations. Here useless.
-                    } #length of submotif
+
+        _d = { 'pol_slip': pol_slip ,'pol_slip_submotif': pol_slip_submotif ,
+                    'pol_slippage_repeatsIndel': pol_slippage_repeatsIndel, 
+                    'pol_slippage_repeatsUpstream':pol_slippage_repeatsUpstream
+                    } 
                 
-                self.pol_slip_dict = _d
-        #print(self.pol_slip_dict)
+        self.pol_slip_dict = _d
 
-    
     def sd_snap_back_MMEJ(self):
         """
         sd_loop_out_MMEJ will detect SD-Snap back MMEJ by looking for the following pattern:
@@ -543,8 +561,9 @@ class emMEJrealignment:
             'SD_loop_out','loop_mmej_marked', 'loop_P2','loop_mh2','loop_repeat_pat',
             'loop_last_dimer', 'loop_dist_between_reps',
             # polymerase slippage
-            'pol_slip', 'pol_slip_submotif', 'pol_slippage_times',
-            'pol_slippage_last_dimer', 'pol_slip_motif_len']
+            'pol_slip' , 'pol_slip_submotif' , 'pol_slippage_repeatsIndel',
+            'pol_slippage_repeatsUpstream'
+            ]
 
         _Dtypes={
             'del_mmej':str, #'del_mmej_cand':object, #'del_mmej_marked':object ,'del_mmej_marked_on_ref':object,
@@ -661,4 +680,6 @@ class emMEJrealignment:
         mmej_marked_inter_reps_seq = f'{self.DSB_down[(len(P2) + self.indel_length):(len(P2) + rep_pat_pos)]}'
 
         return f'{mmej_marked_up}{mmej_marked_inter_reps_seq}{mmej_marked_rep_down}'
+
+
 
