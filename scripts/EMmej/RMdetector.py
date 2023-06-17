@@ -319,7 +319,7 @@ col_to_save = ['CHR', 'POS', 'original_pos', 'variant_id', 'direction', #'REF','
             #'snap_motif_pos', 'snap_freq_small_window', 'snap_freq_large_window',
             # polymerase slippage
             'pol_slip', 'pol_slip_submotif', 'pol_slippage_repeatsIndel',
-            'pol_slippage_repeatsUpstream' ] #'pol_slippage_times',
+            'pol_slippage_repeatsUpstream', 'pol_slip_pos' ] #'pol_slippage_times',
 
 if args["include_context"]: col_to_save = col_to_save + ['ref_genome_context', 'mutant_sequence']
 

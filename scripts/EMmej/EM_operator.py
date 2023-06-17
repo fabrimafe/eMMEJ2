@@ -74,6 +74,8 @@ all_args.add_argument("-ildt", "--indel_length_distribution_type",
       help="type of distribution of indel length. Options are full, uniform, savitzky_golay") #poisson. maybe I could just say smoothed
 all_args.add_argument("-mhl", "--MH_lengths", required=False ,default=2,
       help="a flag that specify the specific MH length that one wants to analyze, default is all MH lengths")
+all_args.add_argument("-dpol", "--del_pol_slip", required=False ,default=False,action='store_true',
+      help="a flag that specify whether DNA polymerase slippage resulting in deletions should be included in the mechanisms estimated via Expectation Maximization")
 
 
 args = vars(all_args.parse_args())
@@ -84,6 +86,7 @@ prob_NHEJ = float(args['initial_proportion_NHEJ'])
 convergence_threshold=args['convergence']
 outfile=args['outputfile']
 logs_outputfile=args['logs']
+del_pol_slip=args['del_pol_slip']
 indel_length_distribution_type=args['indel_length_distribution_type']
 posteriordecodingfile=args['posteriordecoding']
 MH_lengths=args['MH_lengths'].split(",")

@@ -52,6 +52,7 @@ class EMq:
         for imhl in range(len(self.MH_lengths)):
             self.del_cols.append("r_nMMEJ_MH"+str(self.MH_lengths[imhl]))
             self.indel_len_dist.append(list())
+        self.del_cols_pol=self.del_cols.append('r_del_pol_slip')
         self.EM_main_loop(theta_0=self.initial_theta)
 
 

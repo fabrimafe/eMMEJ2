@@ -69,8 +69,12 @@ def get_motifs_pos(ref, CHR, POS, motif, windowsize):
 # This also is such that 0 position is now -1 (last dimer)
     #mmej_motif_pos = mmej_motif_pos[(mmej_motif_pos>(-1*small_window)) &
 #                        (mmej_motif_pos<(small_window))]
-    mmej_motif_pos = mmej_motif_pos.tolist()
-    return mmej_motif_pos
+#    mmej_motif_pos = mmej_motif_pos.tolist()
+    if len(mmej_motif_pos)>0:
+        out = ''
+        for i in mmej_motif_pos:
+            out = f"{out},{i}"
+    return out[1:]
 
 
 def get_motifs_freqs(ref, CHR, POS, large_window, small_window, motif, indel_type):

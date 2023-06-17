@@ -299,7 +299,6 @@ class emMEJrealignment:
         nrepeats_upstream=0
         isrepeated=True
         while isrepeated:
-            print("new")
             nrepeats_upstream=nrepeats_upstream+1
             upstream_repeat=self.DSB_up[(len(self.DSB_up)-len(subrepeat[0])*nrepeats_upstream):]
             if upstream_repeat!=(subrepeat[0]*nrepeats_upstream):
@@ -311,16 +310,18 @@ class emMEJrealignment:
             pol_slip_submotif = subrepeat[0]
             pol_slippage_repeatsIndel = subrepeat[1]
             pol_slippage_repeatsUpstream = nrepeats_upstream #NB:repeats upstream includes the indel, thus goes from 1 (only the indel) to many
+            pol_slip_pos=get_motifs_pos(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr, motif=subrepeat[0], windowsize=1000)
         else:
             pol_slip = False
             pol_slip_submotif = subrepeat[0]
             pol_slippage_repeatsIndel = subrepeat[1]
             pol_slippage_repeatsUpstream = 0
-
+            pol_slip_pos='0'
 
         _d = { 'pol_slip': pol_slip ,'pol_slip_submotif': pol_slip_submotif ,
                     'pol_slippage_repeatsIndel': pol_slippage_repeatsIndel, 
-                    'pol_slippage_repeatsUpstream':pol_slippage_repeatsUpstream
+                    'pol_slippage_repeatsUpstream':pol_slippage_repeatsUpstream,
+                    'pol_slip_pos':pol_slip_pos
                     } 
                 
         self.pol_slip_dict = _d
@@ -562,7 +563,7 @@ class emMEJrealignment:
             'loop_last_dimer', 'loop_dist_between_reps',
             # polymerase slippage
             'pol_slip' , 'pol_slip_submotif' , 'pol_slippage_repeatsIndel',
-            'pol_slippage_repeatsUpstream'
+            'pol_slippage_repeatsUpstream', 'pos_slip_pos'
             ]
 
         _Dtypes={

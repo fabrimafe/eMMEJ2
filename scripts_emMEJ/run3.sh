@@ -14,6 +14,7 @@ echo "MM"
 #python ./scripts/EMmej/Markov_model_operator.py --vcf ${xfolder}/RMoutput.tsv --ref $reference -p markov -o ${xfolder}/MM_output.tsv
 echo "EM"
 #python ./scripts/EMmej/EM_operator.py --vcf ${xfolder}/RMoutput.tsv --ref $reference -o ${xfolder}/EM_output.tsv -e 1 -mhl 4 -ildt "savitzky_golay" #"uniform" -mhl 2,3,4,0
-python ./scripts/EMmej/EM_operator.py --vcf ${xfolder}/RMoutput.tsv --ref $reference -o ${xfolder}/EM_output.tsv -e 1 -mhl 2 -ildt "savitzky_golay" -c 0.000000001
+#python ./scripts/EMmej/EM_operator.py --vcf ${xfolder}/RMoutput.tsv --ref $reference -o ${xfolder}/EM_output.tsv -e 1 -mhl 2 -ildt "savitzky_golay" -c 0.000000001
+
 
 
