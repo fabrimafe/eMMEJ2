@@ -20,7 +20,7 @@ class EMq:
     def __init__(self, data: pd.DataFrame, 
                 initial_theta: float,
                 convergence_threshold: float,
-                window_size: int, indel_length_distribution_type: str, MH_lengths: list) -> float: #, 
+                window_size: int, indel_length_distribution_type: str, MH_lengths: list, del_pol_slip) -> float: #, 
                 #MM_lk: float) -> float:
         """
         This class encapsulate all steps that is needed in order
@@ -41,7 +41,12 @@ class EMq:
         self.convergence_threshold = convergence_threshold
         self.indel_length_distribution_type = indel_length_distribution_type
         self.window_size = window_size
+        self.del_pol_slip=del_pol_slip
         #self.MM_lk = MM_lk
+        if self.del_pol_slip:
+            self.nmechanisms=len(self.MH_lengths)+1+1
+        else:
+            self.nmechanisms=len(self.MH_lengths)+1
         self.log = pd.DataFrame(columns=['MMEJ_theta', 'NHEJ_theta', 'minus_log_likelihood'])
         #self.indel_length_dist_log = pd.DataFrame(columns=['MMEJ_indel_len_dist', 'NHEJ_indel_len_dist'])
         # exeption handling
@@ -52,7 +57,10 @@ class EMq:
         for imhl in range(len(self.MH_lengths)):
             self.del_cols.append("r_nMMEJ_MH"+str(self.MH_lengths[imhl]))
             self.indel_len_dist.append(list())
-        self.del_cols_pol=self.del_cols.append('r_del_pol_slip')
+        if del_pol_slip:
+            self.del_cols.append('r_delpolslip')
+            self.indel_len_dist.append(list())
+            #print(self.df['pol_slip_submotif'])
         self.EM_main_loop(theta_0=self.initial_theta)
 
 
@@ -98,7 +106,7 @@ class EMq:
         Args:
             contex_seq (str): the context sequence
             motif (str): the motif sequence
-            window_size (int): last position to look for the motif (we set 50)
+            window_size (int): last position to look for the motif (we set 50) with 0 as first, in either directions
             
         Returns:
             mmej_pos (np.array): a normalized vector with all position of motifs
@@ -155,10 +163,24 @@ class EMq:
             p_MMEJ = 0
         return p_MMEJ
     
+    def get_conditional_prob_mechanism_from_motifpos_polslip(self, motif: str,obs_len: int, indel_pos: list, mhl: int) -> list: 
+        """
+        Iterable implementation of get_conditional_prob_mechanisms working for an individual motif 
+        and a indel length distribution
+        """
+        if len(motif)>0:
+        #    print(self.indel_len_dist[mhl])
+            obs_len_freq = np.take(a=self.indel_len_dist[mhl], indices=obs_len)
+            indel_len_sum = np.take(a=self.indel_len_dist[mhl],indices=indel_pos).sum()
+            p_MMEJ = (obs_len_freq/indel_len_sum) 
+        else:
+            p_MMEJ = 0
+        return p_MMEJ
     def get_indel_length_dist(self, mechanism :str) -> float:
         """
         ADD DOCS HERE
         """
+        #print(self.df[mechanism])
         indel_len_dist = np.array([(self.df.loc[(self.df['indel_len'] == i), mechanism].sum() /
                     self.df.loc[:, mechanism].sum()) for i in range(1,(self.window_size+1))], dtype="float")
         # adding a bias for regularization
@@ -179,14 +201,24 @@ class EMq:
             self.df.apply(lambda x: self.get_conditional_prob_mechanism_from_motifpos(motif=x['del_mmej_cand'][imhl], 
                     indel_pos=x["del_mmej_pos_mh"+str(self.MH_lengths[imhl])], obs_len=(x['indel_len']-1),mhl=imhl), 
                     result_type='expand', axis=1))
-        
+        if self.del_pol_slip:
+            namecol="r_delpolslip"
+            self.df.loc[: , namecol] = np.array(
+            self.df.apply(lambda x: self.get_conditional_prob_mechanism_from_motifpos_polslip(motif=x['pol_slip_submotif'], 
+                    indel_pos=x["pol_slip_pos"], obs_len=(x['indel_len']-1),mhl=imhl+1), 
+                    result_type='expand', axis=1))
         #print(self.df.loc[: ,self.del_cols])
         #print(theta_a)
         # Realigments normalizing
         # calculating realignment wigths (realignment_w)
         #self.df['realignment_w'] = ((self.df['r_nMMEJ']*theta_a)+(self.df['r_nNHEJ'])*(1-theta_a))
+        #print(self.del_cols)
+        print(self.df[self.del_cols])
+        #print(theta_a)
         self.df[self.del_cols]=self.df[self.del_cols].multiply(theta_a, axis=1)
+        #print(self.df[self.del_cols])
         self.df['realignment_w'] = np.sum(self.df[self.del_cols],axis=1)
+        #print(self.df['realignment_w'])
         self.df[self.del_cols]=self.df[self.del_cols].div(self.df['realignment_w'], axis=0) #now to save calculations I do here "Multiply by theta_a and normalization"
         self.update_log(theta_a=theta_a)
         #print(self.df['realignment_w'])
@@ -207,24 +239,23 @@ class EMq:
         theta_a_t=[]
         # For each mechanism:
                 # maximize indel length distributions
-        for imhl in range(len(self.del_cols)): 
-                #print(imhl)
+        for imhl in range(self.nmechanisms): 
                 #print(len(self.indel_len_dist))
+                #print(self.del_cols[imhl])
                 self.indel_len_dist[imhl] = self.get_indel_length_dist(mechanism=self.del_cols[imhl])
                 if self.indel_length_distribution_type == "uniform":
                         self.indel_len_dist[imhl].fill(1/(len(self.indel_len_dist[imhl])))
-                        self.indel_len_dist[imhl][0]=0
                 elif self.indel_length_distribution_type == "savitzky_golay":
                 #https://stackoverflow.com/questions/20618804/how-to-smooth-a-curve-for-a-dataset
                         temp_sg=savgol_filter(self.indel_len_dist[imhl], 50, 1) 
                         self.indel_len_dist[imhl]=temp_sg
-                        self.indel_len_dist[imhl][0]=0
                         self.indel_len_dist[imhl]=self.indel_len_dist[imhl]/np.sum(self.indel_len_dist[imhl])
+                # self.indel_len_dist[imhl][0]=0
                 # maximize mechanism proportion  
-                print(self.del_cols[imhl])
+                #print(self.del_cols[imhl])
                 #print(self.df.loc[:,self.del_cols[imhl]].sum()/self.n_variants)
                 theta_a_t.append(self.df.loc[:,self.del_cols[imhl]].sum()/self.n_variants)
-        theta_a_t=np.array(theta_a_t)
+        theta_a_t=np.array(theta_a_t)/np.array(theta_a_t).sum() #this should not be necessary. But I see that not alwasys sum to 1. Investigate, maybe bug
         return theta_a_t
 
     def EM_main_loop(self, theta_0: float) -> None:
@@ -242,23 +273,28 @@ class EMq:
         self.n_variants = len(np.unique(np.array(self.df['variant_id'])))
         self.dist_bias = 1*10**-4
 
-        #---- Initialize the distributions of indel lengths for MMEJ and NHEJ  ------------------------
-        #fabri: use better initial conditions
+        #---- Initialize the distributions of indel lengths ------------------------
+        #---------->MMEJ
         mmej_init_dist = np.array([(len(self.df.loc[self.df['indel_len'] == i, 'variant_id'].unique())/
                             self.n_variants) for i in range(1,(self.window_size+1))])
         mmej_init_dist = mmej_init_dist + (self.dist_bias)
         for imhl in range(1,len(self.del_cols)):
             self.indel_len_dist[imhl] = np.array([(i/mmej_init_dist.sum()) for i in mmej_init_dist])
-        
+        #---------->NHEJ
         nhej_init_dist = np.array([(len(self.df.loc[((self.df['indel_len'] == i) & 
-                                                (self.df['del_mmej_cand'].isna() == True)), 'variant_id'].unique())
-                                        /(len(self.df.loc[(self.df['del_mmej_cand'].isna() == True), 'variant_id'].unique())+1)) for i in range(1,(self.window_size+1))])
-        # In cases were there are 0 NHEJ, the distribution takes 0.9 of the values of the MMEJ
+                                                (self.df['del_mmej_cand'].isna() == True)), 'variant_id'].unique())/(len(self.df.loc[(self.df['del_mmej_cand'].isna() == True), 'variant_id'].unique())+1)) for i in range(1,(self.window_size+1))])
         if all(nhej_init_dist) == 0:
             nhej_init_dist = np.array(mmej_init_dist) * 0.9
             nhej_init_dist = np.array([i/nhej_init_dist.sum() for i in nhej_init_dist])
         nhej_init_dist = nhej_init_dist + (self.dist_bias)
         self.indel_len_dist[0] = np.array([(i/nhej_init_dist.sum()) for i in nhej_init_dist])
+        #--------->DEL_Polymerase_Slippage
+        del_pol_slip_init_dist = np.array([(len(self.df.loc[((self.df['indel_len'] == i) & 
+                                                (self.df['pol_slip'] == True)), 'variant_id'].unique())/(len(self.df.loc[(self.df['pol_slip'] == True), 'variant_id'].unique())+1)) for i in range(1,(self.window_size+1))])
+        if all(del_pol_slip_init_dist) == 0:
+            del_pol_slip_init_dist = np.array(mmej_init_dist) * 0.9
+            del_pol_slip_init_dist = np.array([i/del_pol_slip_init_dist.sum() for i in del_pol_slip_init_dist])
+        del_pol_slip_init_dist = del_pol_slip_init_dist + (self.dist_bias)
 
         
         #---- Initialize the vectors of motif positions for each indel  ------------------------
@@ -274,12 +310,18 @@ class EMq:
             self.df.loc[:,namecol]=self.df[namecol].str.split(",") #.values.tolist()
             self.df[namecol] = self.df[namecol].apply(lambda x: np.array(x, dtype=np.int))       
             self.df[namecol] = self.df[namecol].apply(lambda x: [num for num in x if num >= 0])
+        if self.del_pol_slip:
+            namecol="pol_slip_pos"
+            self.df[namecol] = self.df[namecol].apply(lambda x: '-9999' if x=='-' else x ) 
+            self.df.loc[:,namecol]=self.df[namecol].str.split(",") #.values.tolist()
+            self.df[namecol] = self.df[namecol].apply(lambda x: np.array(x, dtype=np.int))       
+            self.df[namecol] = self.df[namecol].apply(lambda x: [num for num in x if num >= 0])
+            self.df['pol_slip_submotif'] = self.df['pol_slip_submotif'].apply(lambda x: '' if x=='-' else x )
         
         print("Start EM loop")
         not_converged=True
         self.iter = 0
-        
-        theta_a=np.full(1+len(self.MH_lengths),(1-theta_0)/len(self.MH_lengths))
+        theta_a=np.full(self.nmechanisms,(1-theta_0)/(self.nmechanisms-1))
         theta_a[0]=theta_0
         print(theta_a)
         while not_converged:

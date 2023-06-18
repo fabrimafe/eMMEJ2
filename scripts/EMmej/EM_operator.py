@@ -159,7 +159,7 @@ if args['EMalgorithm']==1:
                 convergence_threshold=args['convergence'],
                 window_size=args['windowsize'], 
                 indel_length_distribution_type=indel_length_distribution_type,
-                MH_lengths=MH_lengths)
+                MH_lengths=MH_lengths, del_pol_slip=del_pol_slip)
 
     EMq_obj.log.to_csv(outfile,sep='\t', index=False)
     EMq_obj.indel_length_dist_log.to_csv(logs_outputfile,sep='\t', index=False)

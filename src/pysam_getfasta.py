@@ -73,7 +73,8 @@ def get_motifs_pos(ref, CHR, POS, motif, windowsize):
     if len(mmej_motif_pos)>0:
         out = ''
         for i in mmej_motif_pos:
-            out = f"{out},{i}"
+            j=str(int(i))
+            out = f"{out},{j}"
     return out[1:]
 
 

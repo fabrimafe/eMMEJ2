@@ -297,30 +297,36 @@ class emMEJrealignment:
         """
         subrepeat=self.find_subrepeat(xINDEL)
         nrepeats_upstream=0
-        isrepeated=True
-        while isrepeated:
-            nrepeats_upstream=nrepeats_upstream+1
-            upstream_repeat=self.DSB_up[(len(self.DSB_up)-len(subrepeat[0])*nrepeats_upstream):]
-            if upstream_repeat!=(subrepeat[0]*nrepeats_upstream):
-                 isrepeated=False
-                 nrepeats_upstream=nrepeats_upstream-1 
-                 #print(xINDEL+" - " +subrepeat[0] + "x" + str(nrepeats_upstream) + " - " + self.DSB_up+ " - " + self.DSB_down)
-        if nrepeats_upstream>1:
+        if self.ref_genome_up[(len(self.ref_genome_up)-len(subrepeat[0])):]==subrepeat[0]: 
+            nrepeats_upstream=1
+            nrepeats_downstream=0
+            isrepeated=True
+            while isrepeated:
+                 nrepeats_downstream=nrepeats_downstream+1
+                 #upstream_repeat=self.DSB_up[(len(self.DSB_up)-len(subrepeat[0])*nrepeats_upstream):]
+                 #NB: variable is called upstream_repeat because first implemented looking upstream. Currently downstream 
+                 downstream_repeat=self.ref_genome_down[:len(subrepeat[0])*nrepeats_downstream]
+                 if downstream_repeat!=(subrepeat[0]*nrepeats_downstream):
+                     isrepeated=False
+                     nrepeats_downstream=nrepeats_downstream-1 
+        if nrepeats_upstream>0:
+            #print(xINDEL+" - " +subrepeat[0] + "x" + str(nrepeats_upstream) + " - " + self.DSB_up+ " - " + self.DSB_down + " ref: " + self.ref_genome_up + " - " + self.ref_genome_down)
             pol_slip = True
             pol_slip_submotif = subrepeat[0]
             pol_slippage_repeatsIndel = subrepeat[1]
-            pol_slippage_repeatsUpstream = nrepeats_upstream #NB:repeats upstream includes the indel, thus goes from 1 (only the indel) to many
-            pol_slip_pos=get_motifs_pos(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr, motif=subrepeat[0], windowsize=1000)
+            pol_slippage_repeatsDownstream = nrepeats_downstream #NB:repeats upstream includes the indel, thus goes from 1 (only the indel) to many
+            pol_slip_pos=get_motifs_pos(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr, motif=subrepeat[0], windowsize=self.windowsize)
+            #print(pol_slip_pos)
         else:
             pol_slip = False
-            pol_slip_submotif = subrepeat[0]
+            pol_slip_submotif = '-'
             pol_slippage_repeatsIndel = subrepeat[1]
-            pol_slippage_repeatsUpstream = 0
-            pol_slip_pos='0'
+            pol_slippage_repeatsDownstream = 0
+            pol_slip_pos='-'
 
         _d = { 'pol_slip': pol_slip ,'pol_slip_submotif': pol_slip_submotif ,
                     'pol_slippage_repeatsIndel': pol_slippage_repeatsIndel, 
-                    'pol_slippage_repeatsUpstream':pol_slippage_repeatsUpstream,
+                    'pol_slippage_repeatsDownstream':pol_slippage_repeatsDownstream,
                     'pol_slip_pos':pol_slip_pos
                     } 
                 
@@ -563,7 +569,7 @@ class emMEJrealignment:
             'loop_last_dimer', 'loop_dist_between_reps',
             # polymerase slippage
             'pol_slip' , 'pol_slip_submotif' , 'pol_slippage_repeatsIndel',
-            'pol_slippage_repeatsUpstream', 'pos_slip_pos'
+            'pol_slippage_repeatsDownstream', 'pos_slip_pos'
             ]
 
         _Dtypes={
