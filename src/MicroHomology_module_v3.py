@@ -315,7 +315,7 @@ class emMEJrealignment:
             pol_slip_submotif = subrepeat[0]
             pol_slippage_repeatsIndel = subrepeat[1]
             pol_slippage_repeatsDownstream = nrepeats_downstream #NB:repeats upstream includes the indel, thus goes from 1 (only the indel) to many
-            pol_slip_pos=get_motifs_pos(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr, motif=subrepeat[0], windowsize=self.windowsize)
+            pol_slip_pos=get_motifs_pos(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr, motif=subrepeat[0], windowsize=len(subrepeat[0])*nrepeats_downstream)
             #print(pol_slip_pos)
         else:
             pol_slip = False

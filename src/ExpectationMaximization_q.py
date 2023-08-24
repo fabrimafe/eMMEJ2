@@ -212,13 +212,9 @@ class EMq:
         # Realigments normalizing
         # calculating realignment wigths (realignment_w)
         #self.df['realignment_w'] = ((self.df['r_nMMEJ']*theta_a)+(self.df['r_nNHEJ'])*(1-theta_a))
-        #print(self.del_cols)
         print(self.df[self.del_cols])
-        #print(theta_a)
         self.df[self.del_cols]=self.df[self.del_cols].multiply(theta_a, axis=1)
-        #print(self.df[self.del_cols])
         self.df['realignment_w'] = np.sum(self.df[self.del_cols],axis=1)
-        #print(self.df['realignment_w'])
         self.df[self.del_cols]=self.df[self.del_cols].div(self.df['realignment_w'], axis=0) #now to save calculations I do here "Multiply by theta_a and normalization"
         self.update_log(theta_a=theta_a)
         #print(self.df['realignment_w'])
