@@ -25,10 +25,10 @@ zcat $inputvcf | head -1 > ${xfolder}/indels.vcf
 #bedtools intersect -b $filter -a <( zcat $inputvcf | grep -v '#' | awk -v OFS='\t' '{print $1,$2-1,$2,$3,$4,$5}' ) | awk -v OFS='\t' '{print $1,$3,$4,$5,$6}' >> ${xfolder}/indels.vcf
 cd /home/labs/alevy/fabrizio/github/guymasterproject_final/guy2023
 echo "RM"
-python ./scripts/EMmej/RMdetector.py --vcf ${xfolder}/indels.vcf --ref $reference --anc -o ${xfolder}/RMoutput.tsv
+python ./bin/EMmej/RMdetector.py --vcf ${xfolder}/indels.vcf --ref $reference --anc -o ${xfolder}/RMoutput.tsv
 echo "MM"
-python ./scripts/EMmej/Markov_model_operator.py --vcf ${xfolder}/RMoutput.tsv --ref $reference -p markov -o ${xfolder}/MM_output.tsv
+python ./bin/EMmej/Markov_model_operator.py --vcf ${xfolder}/RMoutput.tsv --ref $reference -p markov -o ${xfolder}/MM_output.tsv
 echo "EM"
-python ./scripts/EMmej/EM_operator.py --vcf ${xfolder}/MM_output.tsv --ref $reference -o ${xfolder}/EM_output.tsv
+python ./bin/EMmej/EM_operator.py --vcf ${xfolder}/MM_output.tsv --ref $reference -o ${xfolder}/EM_output.tsv
 done
 

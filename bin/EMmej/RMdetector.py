@@ -17,6 +17,7 @@ import numpy as np
 from pysam import FastaFile
 import Bio
 from Bio import Align #from Bio import pairwise2. # pairwise2 is now deprecated in Biopython >1.80
+from Bio import pairwise2
 
 from MicroHomology_module_v3 import emMEJrealignment
 from realignment_module import * 
@@ -72,7 +73,7 @@ MH_lengths=args['MH_lengths'].split(",")
 MH_lengths = [int(x) for x in MH_lengths]
 
 path_to_data = args["vcf"]
-Dtypes={'CHR':str, 'POS':int, 'REF':str, 'ALT':str, 'ANCESTRAL': int}
+Dtypes={'CHR':str, 'POS':int, 'REF':str, 'ALT':str, 'ANCESTRAL': str}
 col_names = ['CHR', 'POS', 'REF', 'ALT', 'ANCESTRAL']
 
 if not args['ancestral']: col_names.remove('ANCESTRAL')
@@ -113,7 +114,7 @@ df.drop(columns=['context_contains_N'], inplace=True)
 
 #if genomic data realign indels
 if not args['CRISPR']:
-    df=df.apply(lambda row : vcf2realignedvcfs(refFA,row['CHR'],row['POS'], row['ANC'],row['DER'],150), axis = 1)
+    df=df.apply(lambda row : vcf2realignedvcfs_pairwise2(refFA,row['CHR'],row['POS'], row['ANC'],row['DER'],150), axis = 1)
     df=flatten_2list(df.tolist())
     df=pd.DataFrame(df,columns = ['CHR','POS','ANC',"DER","original_pos"])
     df.loc[:, 'POS'] = df.loc[:, 'POS'] + 1

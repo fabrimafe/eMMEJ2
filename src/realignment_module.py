@@ -5,6 +5,7 @@ from pysam import FastaFile
 import Bio
 from Bio import Align
 import numpy as np
+from Bio import pairwise2
 
 #import argparse
 
