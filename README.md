@@ -17,12 +17,12 @@ emMEJ can be found in https://github.com/GuyTadmor-28/guy_master_project or in l
 ```
 ## Venv
 To recover the venv for this project, use:
-module load miniconda
 conda create --name recoveredenv --file guy_mmej_env.yml
 
 ## Authors
  - Fabrizio Mafessoni
  - Guy Tadmor
+ - Fabio Collina
 
 ## File Formats
 
