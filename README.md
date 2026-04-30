@@ -21,14 +21,7 @@ conda create --name recoveredenv --file guy_mmej_env.yml
 
 ## Authors
  - Fabrizio Mafessoni
- - Guy Tadmor
  - Fabio Collina
+ - Guy Tadmor
 
-## File Formats
 
-## Online Repository link
-
-## License
-
-## Acknowledgments
-Avi! And read "Good research code" !
