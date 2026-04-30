@@ -1,6 +1,5 @@
 # emMEJ2
-This is an update over emMEJ (which was built with Guy Tadmor) to replace 2nd order Markov chain approach is my new way to document my master's project
-emMEJ can be found in https://github.com/GuyTadmor-28/guy_master_project or in local WEXAC folder /home/labs/alevy/fabrizio/github/guymasterproject_final/guy2023
+This is an update over emMEJ (which can be found at /github.com/GuyTadmor-28/guy_master_project)
 
 ## Directory description:
 ```
