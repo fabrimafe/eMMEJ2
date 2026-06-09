@@ -83,10 +83,11 @@ def get_motifs_freqs(ref, CHR, POS, large_window, small_window, motif, indel_typ
     A function that returns all positions with the motif
     in a given context (small window) and frequencies of the motif
     in windows of different size.
+    IT GIVES THE DISTANCE BETWEEN POS AND THE NT BEFORE THE OTHER MOTIFS
     """
     context = ref.fetch(CHR,POS-large_window ,POS+large_window).upper()
     mmej_motif_pos = np.array([m.end() for m in
-            re.finditer(motif, context, overlapped=True)])
+            re.finditer(motif, context, overlapped=True)], dtype=object)
 
     mmej_motif_pos = mmej_motif_pos - (len(context)/2)
     motif_count_large = mmej_motif_pos.shape[0]
@@ -95,15 +96,15 @@ def get_motifs_freqs(ref, CHR, POS, large_window, small_window, motif, indel_typ
                             (mmej_motif_pos > ((-1)*small_window)))].shape[0]
     motif_freq_small = round(motif_count_small/(small_window-len(motif)), 5)
     mmej_motif_pos = mmej_motif_pos[(mmej_motif_pos>(-1*small_window)) &
-                        (mmej_motif_pos<(small_window))]-1
+            (mmej_motif_pos<(small_window))]-len(motif) #changed: now the end is the beginning of the motif
     mmej_motif_pos = mmej_motif_pos.astype(int).tolist()
     if len(mmej_motif_pos)>0:
         out = ''
         for i in mmej_motif_pos:
             out = f"{out},{i}"
-        return [out[1:], motif_freq_small, motif_freq_large] #np.array
+        return np.array([out[1:], motif_freq_small, motif_freq_large], dtype = object) #np.array
     else:
-        return [np.nan, motif_freq_small, motif_freq_large] #np.array
+        return np.array([np.nan, motif_freq_small, motif_freq_large], dtype = object) #np.array
 
 """
 def get_motifs_freqs(ref, CHR, POS, large_window, small_window, motifs, indel_type):

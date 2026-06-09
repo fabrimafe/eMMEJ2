@@ -55,7 +55,8 @@ def vcf2realignedvcfs_pairwise2(refFA,chrom,pos,REF,ALT,length_around):
     It uses Bio.pairwise2 was deprecated in Biopython Release 1.80.
 """
     if REF!=ALT and REF!="N" and ALT!="N" and not pd.isna(REF) and not pd.isna(ALT):
-        starting_base=refFA.fetch(chrom,pos-2-length_around,pos)
+        starting_base=refFA.fetch(chrom,pos-1-length_around,pos)
+        
         seqREF=refFA.fetch(chrom,pos-1-length_around,pos-1)+REF+refFA.fetch(chrom,pos+len(REF)-1,pos+length_around+len(REF))
         seqALT=refFA.fetch(chrom,pos-1-length_around,pos-1)+ALT+refFA.fetch(chrom,pos+len(REF)-1,pos+length_around+len(REF))
         alignments = pairwise2.align.localms(seqREF, seqALT ,5, -1, -0.5, -0.1)
@@ -93,6 +94,7 @@ def vcf2realignedvcfs(refFA,chrom,pos,REF,ALT,length_around):
     if REF!=ALT and REF!="N" and ALT!="N" and not pd.isna(REF) and not pd.isna(ALT):
         starting_base=refFA.fetch(chrom,pos-2-length_around,pos)
         seqREF=refFA.fetch(chrom,pos-1-length_around,pos-1)+REF+refFA.fetch(chrom,pos+len(REF)-1,pos+length_around+len(REF))
+        
         seqALT=refFA.fetch(chrom,pos-1-length_around,pos-1)+ALT+refFA.fetch(chrom,pos+len(REF)-1,pos+length_around+len(REF))
         aligner = Align.PairwiseAligner()
         aligner.mode = 'global'
