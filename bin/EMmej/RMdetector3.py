@@ -111,17 +111,20 @@ if args['verbose']:
 
 df = df.loc[(df['context_contains_N'] == False), :]
 df.drop(columns=['context_contains_N'], inplace=True)
-
+print(df[['DER', 'ANC']])
 # df = df.loc[df['CHR'] == 'pol_slip_monodirectional_0',:]
 
 #if genomic data realign indels
-
-if not args['CRISPR']:
+SUB = ((df['ANC'].str.len() > 1) & (df['DER'].str.len() > 1)).any()
+if not args['CRISPR'] and not SUB:
     df=df.apply(lambda row : vcf2realignedvcfs_pairwise2(refFA,row['CHR'],row['POS'], row['ANC'],row['DER'],150), axis = 1)
     df=flatten_2list(df.tolist())
     df=pd.DataFrame(df,columns = ['CHR','POS','ANC',"DER","original_pos"])
     df.loc[:, 'POS'] = df.loc[:, 'POS'] + 1
-    
+else:
+    df['original_pos'] = df['POS']
+
+print(df[['DER', 'ANC']])    
 """
 #now this new lines allow to work only with the variant on the original vfc (input)
 if not args['CRISPR']:
@@ -168,8 +171,8 @@ df.loc[:, 'ANC'] = df.loc[:, 'ANC'].str.upper()
 # defining indel type and length
 df.loc[:, 'indel_type'] = np.nan
 df.loc[(df['ANC'].str.len() > df['DER'].str.len()), 'indel_type'] = 'DEL'
-df.loc[((df['ANC'].str.len() >1) & (df['DER'].str.len() >1)), 'indel_type'] = 'SUB'
 df.loc[(df['ANC'].str.len() < df['DER'].str.len()), 'indel_type'] = 'INS'
+df.loc[((df['ANC'].str.len() >= 1) & (df['DER'].str.len() >= 1)), 'indel_type'] = 'SUB'
 df.loc[:, 'indel_len'] = np.nan
 df.loc[:, 'ref_len'] = df.loc[:,'ANC'].str.len()
 df.loc[:, 'alt_len'] = df.loc[:,'DER'].str.len()
@@ -249,6 +252,7 @@ if args['CRISPR']:
         lambda row: f"{row['variant_id']}.{row['direction']}", axis=1)
     
 # if not crispr, look for patterns (only for insertions, no deletion) on the fliped seq (3'->5'):--> 
+
 print("start insertions")
 if not args['CRISPR']:
     df_ins = df.loc[(df['indel_type'] == 'INS'), ['CHR', 'POS', 
@@ -356,7 +360,17 @@ col_to_save = ['CHR', 'POS', 'original_pos', 'variant_id', 'direction', #'REF','
             # SD_inverted_deletions
             'SD_inverted_deletion','SD_ID_mutant_pattern','SD_ID_MHrevc','SD_ID_Prevc',
             'SD_ID_repeat_pat','SD_ID_repeat_pat_len','SD_ID_last_dimer','SD_ID_dist_between_reps',
-            'SD_ID_motif_pos','SD_ID_motif_freq_small','SD_ID_motif_freq_large'
+            'SD_ID_motif_pos','SD_ID_motif_freq_small','SD_ID_motif_freq_large',
+
+            #SD_direct_substitution
+            'SD_direct_substitution','SD_DS_mutant_pattern','SD_DS_P2','SD_DS_MH2',
+            'SD_DS_repeat_pat','SD_DS_repeat_pat_len','SD_DS_dist_between_reps','SD_DS_last_dimer',
+            'SD_DS_motif_pos','SD_DS_motif_freq_small','SD_DS_motif_freq_large',
+            #SD_inverted_substitution
+            'SD_inverted_substitution','SD_IS_mutant_pattern','SD_IS_Prevc','SD_DS_MHrevc',
+            'SD_IS_repeat_pat','SD_IS_repeat_pat_len','SD_IS_dist_between_reps','SD_IS_last_dimer',
+            'SD_IS_motif_pos','SD_IS_motif_freq_small','SD_IS_motif_freq_large'
+            
             ]
             #'loop_motif_pos', 'loop_freq_small_window', 'loop_freq_large_window',
             #'snap_motif_pos', 'snap_freq_small_window', 'snap_freq_large_window',
@@ -369,8 +383,9 @@ if args["include_context"]: col_to_save = col_to_save + ['ref_genome_context', '
 df.loc[:,'del_mmej'].fillna(value=False, inplace=True)
 df.loc[:,'SD_inverted_insertion'].fillna(value=False, inplace=True)
 df.loc[:,'SD_direct_insertion'].fillna(value=False, inplace=True)
-df.loc[:,'pol_slip'].fillna(value=False, inplace=True)
+#df.loc[:,'pol_slip'].fillna(value=False, inplace=True)
 df.loc[:,'SD_direct_deletion'].fillna(value=False, inplace=True)
 df.loc[:,'SD_inverted_deletion'].fillna(value=False, inplace=True)
+df.loc[:,'SD_direct_substitution'].fillna(value=False, inplace=True)
 
 df.loc[:, col_to_save].to_csv(f"{args['outputfile']}", sep='\t', index=False)

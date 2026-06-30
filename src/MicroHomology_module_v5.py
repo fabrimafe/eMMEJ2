@@ -46,19 +46,39 @@ class emMEJrealignment:
 #            self.MH_lengths = "None"
 
         if (self.indel_type == 'INS'):  # cropping indel sequence to the right size.
+            print("ins")
             self.indel_length = len(DER) - 1
             self.INDEL =  DER[len(ANC):] #fabri: is this for substitutions? Then why before length-1?
             self.ANC = ANC
             self.windowsize = windowsize
         if (self.indel_type == 'DEL'): 
+            print("del")
             self.indel_length = len(ANC) - 1
             self.ANC = ANC[len(DER):]
-            print("ANC: "+ANC)
-            print("DER: "+DER)
             self.INDEL = ANC[len(DER):]
-            print("self.INDEL: "+self.INDEL)
             self.windowsize = windowsize + self.indel_length
             self.indel_position = self.windowsize
+        if (self.indel_type == 'SUB'):
+            print("sub")
+            if len(ANC) > len (DER):
+                self.indel_length = len(ANC) - len (DER)
+                self.INDEL = DER
+                self.ANC = ANC
+                self.DER = DER
+                #self.INDEL = DER[1:] # self.INDEL = self.DER 
+                #self.ANC = ANC[1:] #delete the anchor
+                #self.DER = DER[1:]
+                
+            else: 
+                self.indel_length = len(DER) - len(ANC)
+                self.INDEL = DER
+                self.ANC = ANC
+                self.DER = DER
+                #self.INDEL = DER[1:] # self.INDEL = self.DER
+                #self.ANC = ANC[1:] #delete the anchor
+                #self.DER = DER[1:]
+                
+            self.windowsize = windowsize
 
         self.ref_seq = get_ref_context(refFA=refFA, chrom=chrom,indel_pos=pos_on_chr,
                             context_window_size=self.windowsize,indel_seq=self.INDEL)
@@ -94,11 +114,29 @@ class emMEJrealignment:
                         ref=self.ANC, 
                         window_size=windowsize) 
 
+        #SUBSTITUTION
+        if (self.indel_type == 'SUB'):
+            if len(ANC) > len (DER):
+                self.mutant_sequence = get_mutant_context(
+                        reference_contex=self.ref_seq,
+                        alt=self.INDEL,
+                        ref=self.ANC,
+                        window_size=windowsize)
+            if len(ANC) < len (DER):
+                self.mutant_sequence = get_mutant_context(
+                        reference_contex=self.ref_seq,
+                        alt=DER,
+                        ref=ANC,
+                        window_size=(windowsize))
+
+
+
         if self.include_context:
             self.context = {
                 'ref_genome_context':self.ref_seq, 
                 'mutant_sequence': self.mutant_sequence}
 
+        
         self.tab = str.maketrans("ACTG", "TGAC") #fabri: define for complement in reverse_complement_converter. It would be nicer within reverse_complement_converter. I guess put here for faster. But then perhaps better out of the module not to do it for every row?
         self.microhomology = self.microhomology_detection()
         self.ex_data = self.export_data()
@@ -202,7 +240,10 @@ class emMEJrealignment:
             self.pol_slip(xINDEL=self.ANC)
             self.sd_direct_deletions()
             self.sd_inverted_deletions()
-
+        
+        if self.indel_type == 'SUB':
+            self.sd_direct_substitution()
+            self.sd_inverted_substitution()
 
     def deletion_MMEJ(self):
         """
@@ -344,23 +385,51 @@ class emMEJrealignment:
     
     def sd_inverted_deletions(self):
         """
-        inserisci tutto
-        """
+        sd_inverted_deletions will detect sd_inverted_deletions by looking for the following pattern:
+        [MH1->DEL->P1] -> random seq (with length>0) -> ([MH2-P2]) MH2-P2=revc of MH1-P1
+        This pattern is based on the one represented in mfabio's drawings
+        Args: 
+            self attributes of the EMMEJrealignment object
+        Returns:
+            ID = Inverted Deletion
 
+            'SD_inverted_deletion': True or false 
+            'SD_ID_mutant_pattern': the genomic context after the repair mechanism
+            'SD_ID_MHrevc': the revc sequence of MH (MH2)
+            'SD_ID_Prevc': the revc sequence of P (P2)
+            'SD_ID_repeat_pat': the 2nd pattern found downstream the DSB
+            'SD_ID_repeat_pat_len': SD_ID_repeat_pat's length
+            'SD_ID_last_dimer': SD_ID_repeat_pat's last dimer useful for hidden markov
+            'SD_ID_dist_between_reps': distance between the patterns (Y sequence)
+            'SD_ID_motif_pos' : position of the pattern from the position of the DSB (pos)
+            'SD_ID_motif_freq_small' : frequence of the pattern in small window
+            'SD_ID_motif_freq_large' : frequence of the pattern in big window       
+            No extension: MH2 is the revc of MH found downstream
+                          P2 is the revc of MH found downstream
+            Extension: MH1 is MH not extended
+                       MH1_1 is MH during the extension
+                       MH1_2 is MH with max extension
+                       
+                       P1 is P not extended
+                       P1_1 is P during extension
+                       P1_2 is P with max extension
+        """
+        #creating lists
         SD_ID_motif_pos, SD_ID_motif_freq_large, SD_ID_motif_freq_small = list(), list(), list()               
-        ###1st step is to bring MH1 and P1 from the ref seq and define them
+        ###1st step is to bring MH1 and P1 from the ref seq, define them and create the revc
         for MH_lengths in self.MH_lengths:
             MH1 = self.ref_genome_up [ - MH_lengths :]  
             P1 = self.ref_genome_down [(self.indel_length):(self.indel_length+MH_lengths)]
             MH1_P1 = MH1 + P1
             MH1_P1revc = self.reverse_complement_converter(seq = MH1_P1) #make the revc)
-            print("MH1_P1: " + MH1_P1)
-            print("self.INDEL :" + self.INDEL)
-            print("MH1: "+ MH1)
-            print("P1: "+ P1)
-            print("MH1_P1revc: "+ MH1_P1revc)
-            print("ex: " + str(self.extension))
+            #print("MH1_P1: " + MH1_P1)
+            #print("self.INDEL :" + self.INDEL)
+            #print("MH1: "+ MH1)
+            #print("P1: "+ P1)
+            #print("MH1_P1revc: "+ MH1_P1revc)
+            #print("ex: " + str(self.extension))
         
+            #searchind MH1_P1revc in self.DSB_down
             if MH1_P1revc in self.DSB_down[(len(self.INDEL) + len(P1) + 1):]:
                 SD_inverted_deletion = True
 
@@ -371,9 +440,8 @@ class emMEJrealignment:
             if SD_inverted_deletion:
                 print("BR found!!!")
             
-                # Creating mmej_marked
+                
                 if not self.extension:
-                    #MH1 = non allungato, MH1_1 in fase di allungamento, MH1_2 =  MH1 a fine allungamento 
                     print("OFF")
                     rep_pat = MH1_P1revc
                     rep_pat_pos = self.mutant_sequence[
@@ -383,8 +451,8 @@ class emMEJrealignment:
                 
                     rep_pat_pos_2 = self.mutant_sequence[
                         (self.indel_position + len(self.INDEL) + len (P1)):].index(rep_pat)
-                    print("rep_pat_pos: "+str (rep_pat_pos)) #distance between P1motif and P2revc motif
-                    print("rep_pat_pos_2: "+str (rep_pat_pos_2))#distance between pos and P2revc motif
+                    #print("rep_pat_pos: "+str (rep_pat_pos)) #distance from P1motif to P2revc motif
+                    #print("rep_pat_pos_2: "+str (rep_pat_pos_2))#distance from pos to P2revc motif
         
                     #define MH2 and P2, MH2 = revc of MH1, P2 = revc of P1
                     P2 = self.mutant_sequence[self.indel_position + len(P1) + rep_pat_pos : 
@@ -396,14 +464,15 @@ class emMEJrealignment:
                     print("MH2: "+MH2)
                     print("P2: "+P2)
         
-                    #seq from P1 to MH2
+                    #sequence between the pattern (from P1 to MH2)
                     mmej_marked_inter_reps_seq = f'{self.DSB_down[len(P2) + self.indel_length :(len(P2) + self.indel_length + rep_pat_pos_2)]}'
+                    #SD_inverted_deletion_mutant_pattern is useful to illustrate the genomic context in the output file
                     SD_inverted_deletion_mutant_pattern = self.inverted_deletions_mutant_pattern_generator(P1=P1, MH1=MH1,rep_pat=rep_pat)
                     
-                    print(mmej_marked_inter_reps_seq)
-                    print(SD_inverted_deletion_mutant_pattern)
+                    #print(mmej_marked_inter_reps_seq)
+                    #print(SD_inverted_deletion_mutant_pattern)
 
-                    
+                    #defining SD_ID_motif_pos,SD_ID_motif_freq_small,SD_ID_motif_freq_large
                     temp_SD_inverted_deletion=get_motifs_freqs(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr, large_window=1000,small_window=self.windowsize,motif=rep_pat,indel_type='DEL')
                     
                     print(temp_SD_inverted_deletion)
@@ -435,14 +504,14 @@ class emMEJrealignment:
                         'SD_ID_motif_freq_large' : SD_ID_motif_freq_large
                         }
                     self.snap_out_dict = _d
-                    #self.loop_out_dict = _d 
+                    
               
                 if self.extension:
                       print("ON")
                       rep_pat = MH1_P1revc
                       rep_pat_pos_2 = self.mutant_sequence[
                           (self.indel_position + len(self.INDEL) + len (P1)):].index(rep_pat)
-                            #distanza fra pos e MH2
+                            #distance from pos to MH2
         
                       for i in range (1, rep_pat_pos_2):
                       ###elongation of MH 
@@ -456,6 +525,7 @@ class emMEJrealignment:
                           #print("self.INDEL :" + self.INDEL)
                           #print("MH1_1: "+ MH1_1)
                           #print("P1: "+ P1)
+                          #searching MH1_1_P1revc in self.ref_genome_down
                           if MH1_1_P1revc in self.ref_genome_down [(len(self.INDEL) + len(P1)):]:
                               tmp_pos = self.ref_genome_down[(len(self.INDEL) + len(P1)):].index(MH1_1_P1revc)
                               #tmp_pos è la posizione del secondo template
@@ -463,20 +533,20 @@ class emMEJrealignment:
         
                           else:
                               MH1_2 = self.ref_genome_up[(- MH_lengths -i +1):]
-                              print("elongations finished")
-                              print("MH1_2: "+str(MH1_2))
-                              MH1_2_P1 = MH1_2 + P1
-                              print("MH1_2_P1_2: " + MH1_2_P1)
+                              #print("elongations finished")
+                              #print("MH1_2: "+str(MH1_2))
+                              MH_2_P1 = MH1_2 + P1
+                              #print("MH1_2_P1_2: " + MH1_2_P1)
                               MH1_2_P1revc = self.reverse_complement_converter(seq = MH1_2_P1)
-                              print("MH1_2_P1_2revc: " + MH1_2_P1revc)
+                              #print("MH1_2_P1_2revc: " + MH1_2_P1revc)
                               tmp_pos = self.ref_genome_down[
                                       (len(self.INDEL) + len(P1)):].index(MH1_2_P1revc)
                               #print("tmp_pos" +str(tmp_pos))
                               break
                           #if tmp_pos < (len(self.INDEL) + len(P1_2)): break
-                          #why i sholud break the loop?
+                          #why i should break the loop?
                                 
-                      # elongation of P2, confined in extention_space[:*starting position of MH2_2*]
+                      # elongation of P
                       for i in range(1, rep_pat_pos_2):
                           P1_1 = self.ref_genome_down[(self.indel_length):(self.indel_length+MH_lengths+i)]
                           MH1_2_P1_1 = MH1_2 + P1_1
@@ -486,27 +556,28 @@ class emMEJrealignment:
                               continue
                           else:
                               P1_2 = P1_1[:-1]
-                              print("P1_2: "+P1_2)
+                              #print("P1_2: "+P1_2)
                               MH1_2_P1_2 = MH1_2 + P1_2
-                              print("MH1_2_P1_2: "+MH1_2_P1_2)
+                              #print("MH1_2_P1_2: "+MH1_2_P1_2)
                               MH1_2_P1_2revc = self.reverse_complement_converter(seq = MH1_2_P1_2)
-                              print("MH1_2_P1_2revc: "+MH1_2_P1_2revc)
+                              #print("MH1_2_P1_2revc: "+MH1_2_P1_2revc)
                               break
                       else:
                           MH1_2_P1_2revc = MH1_2_P1revc #se P2 non viene allungato allora il BR rimane con R non allungato
                             
-                      # Creating mmej_marked
+                      
                       rep_pat = MH1_2_P1_2revc
                       rep_pat_pos = self.mutant_sequence[
                           (self.indel_position+len(P1_2)):].index(rep_pat)
                       #print("rep_pat_pos"+str (rep_pat_pos)) #distanza fra P1 e MH2
-                    
+                      #seq between the pattern
                       mmej_marked_inter_reps_seq = f'{self.DSB_down[(len(P1_2) + self.indel_length):(len(P1_2) + rep_pat_pos)]}'
                         #seq from P1 to MH2
                       print(mmej_marked_inter_reps_seq)
-
+                      #SD_inverted_deletion_mutant_pattern is useful to illustrate the genomic context in the output file
                       SD_inverted_deletion_mutant_pattern = self.inverted_deletions_mutant_pattern_generator(P1=P1_2, MH1=MH1_2,rep_pat=rep_pat)
-                      print(SD_inverted_deletion_mutant_pattern)
+                      #print(SD_inverted_deletion_mutant_pattern)
+                      #define SD_ID_motif_pos,SD_ID_motif_freq_small, SD_ID_motif_freq_large
                       temp_SD_inverted_deletion=get_motifs_freqs(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr, large_window=1000,small_window=self.windowsize,motif=rep_pat,indel_type='DEL')
                       print(temp_SD_inverted_deletion)
                             
@@ -541,66 +612,72 @@ class emMEJrealignment:
                           'SD_ID_motif_freq_large' : SD_ID_motif_freq_large
                              }
                       self.snap_out_dict = _d
-                      #self.loop_out_dict = _d
-                
-        
-        
-        
-        
-        
+                              
         
 
     
     def sd_snap_back_MMEJ(self):
         """    
-        sd_loop_out_MMEJ will detect SD-Snap back MMEJ by looking for the following pattern:
+        sd_snap_back_MMEJ will detect SD-Snap back MMEJ insertions  by looking for the following pattern:
         [MH2->INS->P2] -> random seq (with length>0) -> invert_and_complement([MH2->INS->P2])
-        This pattern is based on the one represented in fig.1B from:
-        Khodaverdian, V. Y. et al. Secondary structure forming sequences drive SD-MMEJ 
-        repair of DNA double-strand breaks. Nucleic Acids Res. 45, 12848–12861 (2017).
-
+        This pattern is based on the one represented in fabio's drawings:
+        
         Args: 
             self attributes of the EMMEJrealignment object
         Returns:
-            snap_mmej_marked (str): the whole pattern of SD-snap-back MMEJ 
-                marked on the mutant context
-            snap_P1 (str): P1 as represented in Fig1B.
-            snap_P2 (str): P2 as represented in Fig1B.
-            snap_mh1 (str): MH1 as represented in Fig1B.
-            snap_mh2 (str): MH2 as represented in Fig1B.
-            snap_inv_comp_repeat_pat (str):The 1st repeat as represented in Fig1B
-                (the one serves as a template for thr elongation of the loop).
-            snap_repeat_pat (str): The 2nd repeat as represented in Fig1B
-                (the one that get sythesized by elongation of the loop).
+            II = Inverted Insertion
+            'SD_inverted_insertion': True or false 
+            'SD_II_mutant_pattern': the genomic context after the repair mechanism
+            'SD_II_MHrevc': the revc sequence of MH (MH2)
+            'SD_II_Prevc': the revc sequence of P (P2)
+            'SD_II_repeat_pat': the 2nd pattern found downstream the DSB
+            'SD_II_repeat_pat_len': SD_II_repeat_pat's length
+            'SD_II_last_dimer': SD_II_repeat_pat's last dimer useful for hidden markov
+            'SD_II_dist_between_reps': distance between the patterns (Y sequence)
+            'SD_II_motif_pos' : position of the pattern from the position of the DSB (pos)
+            'SD_II_motif_freq_small' : frequence of the pattern in small window
+            'SD_II_motif_freq_large' : frequence of the pattern in big window       
+            No extension: MH2 is the revc of MH found downstream
+                          P2 is the revc of MH found downstream
+            Extension: MH1 is MH not extended
+                       MH1_1 is MH during the extension
+                       MH1_2 is MH with max extension
+                       
+                       P1 is P not extended
+                       P1_1 is P during extension
+                       P1_2 is P with max extension 
+
+            
         """
-        SD_II_motif_pos, SD_II_motif_freq_large, SD_II_motif_freq_small = list(), list(), list()               
+        SD_II_motif_pos, SD_II_motif_freq_large, SD_II_motif_freq_small = list(), list(), list() #creation of the lists               
         ###1st step is to bring MH1 and P1 from the ref seq 
         for MH_lengths in self.MH_lengths:
             MH1 = self.ref_genome_up [ - MH_lengths :]  
             P1 = self.ref_genome_down [ : + MH_lengths ]
-            #MH1_P1 = MH1 + P1
+            #defining the II_pattern 
             DI_pattern = MH1 + self.INDEL + P1
             II_pattern = self.reverse_complement_converter(seq = DI_pattern)
             #print("DI_pattern: " + DI_pattern)
-            print ("II-pattern_before elongation: " + II_pattern)
-            print("self.INDEL :" + self.INDEL)
-            print("MH1: "+ MH1)
-            print("P1: "+ P1)
+            #print ("II-pattern_before elongation: " + II_pattern)
+            #print("self.INDEL :" + self.INDEL)
+            #print("MH1: "+ MH1)
+            #print("P1: "+ P1)
             #print("ex: " + str(self.extension))
+            #searching II_pattern in downstream in the genome
         
             if II_pattern in self.ref_genome_down[(len(P1) + 1):]:#1 nt is the necessary for the formation of the loop
                 SD_inverted_insertion = True
 
             else:
                 SD_inverted_insertion = False
-                print ("BZR not found")
+                #print ("BZR not found")
             
             if SD_inverted_insertion:
-                print("BZR found!")
+                #print("BZR found!")
                  # Creating mmej_marked
                 
                 if not self.extension:
-                    #MH1 = non allungato, MH1_1 in fase di allungamento, MH1_2 =  MH1 a fine allungamento 
+                    #in not elongation we define MH2 and P2 according to the distance of the pattern from the pos 
                     print("OFF")
                     rep_pat = II_pattern
                     rep_pat_pos_2 = self.mutant_sequence[
@@ -608,10 +685,10 @@ class emMEJrealignment:
                 
                     rep_pat_pos = self.mutant_sequence[
                         (self.indel_position + len(self.INDEL) + len (P1)):].index(rep_pat)
-                    print("rep_pat_pos: "+str (rep_pat_pos)) #distance between P  e Prevc (Y seq)
-                    print("rep_pat_pos_2: "+str (rep_pat_pos_2))#distance between pos e Prevc
+                    #print("rep_pat_pos: "+str (rep_pat_pos)) #distance between P  e Prevc (Y seq)
+                    #print("rep_pat_pos_2: "+str (rep_pat_pos_2))#distance between pos e Prevc
 
-                    #definisci MH2 e P2
+                    #define MH2 e P2
                     P2 = self.mutant_sequence[
                             self.indel_position + len(self.INDEL) + len(P1) + rep_pat_pos : 
                                 self.indel_position + len(self.INDEL) + len(P1) + rep_pat_pos + len(MH1)]
@@ -622,22 +699,22 @@ class emMEJrealignment:
                             self.indel_position + len(self.INDEL) + len(P1) +
                             rep_pat_pos + len(MH1) + len(self.INDEL) + len(P1)]
                 
-                    print("Prevc: "+P2)
-                    print("MHrevc: "+MH2)
+                    #print("Prevc: "+P2)
+                    #print("MHrevc: "+MH2)
 
-                    # Crearing mmej_marked
+                    # creating Crearing mmej_marked
                     mmej_marked_inter_reps_seq = f'{self.DSB_down[(len(P2) + self.indel_length):(self.indel_length +len(P2) + rep_pat_pos)]}'
                     print("snapback - loop :"+mmej_marked_inter_reps_seq)
         
-                    # set output variables as attributes
+                    # SD_I_Insertion_mutant_pattern is useful to illustrate the genomic context in the output file
                     SD_I_Insertion_mutant_pattern = self.snap_mutant_pattern_generator(P1=P1,P2=P2,MH1=MH1,
                             MH2=MH2,rep_pat=rep_pat)
-                    print (SD_I_Insertion_mutant_pattern)
+                    #print (SD_I_Insertion_mutant_pattern)
                                  
                     
-            
+                    #defining SD_II_motif_pos, SD_II_motif_freq_small,SD_II_motif_freq_large 
                     temp_SD_inverted_insertion=get_motifs_freqs(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr, large_window=1000,small_window=self.windowsize,motif=rep_pat,indel_type='DEL')
-                    print (temp_SD_inverted_insertion)
+                    #print (temp_SD_inverted_insertion)
           
                     SD_II_motif_pos.append(temp_SD_inverted_insertion[0])
                     SD_II_motif_freq_small.append(temp_SD_inverted_insertion[1])
@@ -674,7 +751,7 @@ class emMEJrealignment:
                       rep_pat_pos_2 = self.mutant_sequence[
                         (self.indel_position):].index(rep_pat)
                       print(rep_pat_pos_2)
-                      #distanza fra pos e Prevc not elongated
+                      #distance between fra pos e Prevc not elongated
                       
                       for i in range (1, rep_pat_pos_2):
                       ###elongation of MH 
@@ -687,8 +764,8 @@ class emMEJrealignment:
                           #print("P1: "+ P1)
                           if MH1_1_indel_P1revc in self.ref_genome_down [ len(P1):]:
                               tmp_pos = self.ref_genome_down[(len(P1)):].index(MH1_1_indel_P1revc)
-                              #tmp_pos è la posizione del secondo template una volta allungato
-                              #print("posizione del secondo template una volta allungato: "+str(tmp_pos))
+                              #tmp_pos pos of 2nd template during elongation 
+                              #print("2nd template pos: "+str(tmp_pos))
                       
                           else:
                               MH1_2 = self.ref_genome_up[(- MH_lengths -i +1):]
@@ -705,7 +782,8 @@ class emMEJrealignment:
                               break
                           #if tmp_pos < (len(self.INDEL) + len(P1_2)): break
                           #why i sholud break the loop?
-                       
+                      
+                      #elongation of P
                       for i in range(1, rep_pat_pos_2):
                           P1_1 = self.ref_genome_down[:( + MH_lengths + i)]
                           MH1_2_indel_P1_1 = MH1_2 + self.INDEL + P1_1
@@ -730,18 +808,19 @@ class emMEJrealignment:
                       print ("final pattern found: " + rep_pat)
                       rep_pat_pos = self.mutant_sequence[
                           (self.indel_position+len(P1_2)):].index(rep_pat)
-                      #print("rep_pat_pos"+str (rep_pat_pos)) #distanza fra P1 e P1revc
-                    
+                      #print("rep_pat_pos"+str (rep_pat_pos)) #distance between P1 e P1revc
+                      
+                      #sequence between the two patterns
                       mmej_marked_inter_reps_seq = f'{self.DSB_down[(len(P1_2) + self.indel_length):(self.indel_length +len(P1_2) + rep_pat_pos)]}'
-                      print("snapback - loop :"+mmej_marked_inter_reps_seq)
+                      #print("snapback - loop :"+mmej_marked_inter_reps_seq)
                       
                        
-                      # set output variables as attributes
+                      #SD_I_Insertion_mutant_pattern is useful to illustrate the genomic context in the output file
                       SD_I_Insertion_mutant_pattern = self.snap_mutant_pattern_generator(P1=P1_2,P2=P1_2revc,MH1=MH1_2,MH2=MH1_2revc,rep_pat=rep_pat)
-                      print (SD_I_Insertion_mutant_pattern)
-                                 
+                      #print (SD_I_Insertion_mutant_pattern)
+                      #defining  SD_II_motif_pos,SD_II_motif_freq_small,SD_II_motif_freq_large 
                       temp_SD_inverted_insertion=get_motifs_freqs(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr, large_window=1000,small_window=self.windowsize,motif=rep_pat,indel_type='DEL')
-                      print (temp_SD_inverted_insertion)
+                      #print (temp_SD_inverted_insertion)
           
                       SD_II_motif_pos.append(temp_SD_inverted_insertion[0])
                       SD_II_motif_freq_small.append(temp_SD_inverted_insertion[1])
@@ -776,8 +855,36 @@ class emMEJrealignment:
 
     def sd_direct_deletions(self):
         """
-        ####### CORRECTION ###########
-        tutto da riscrivere
+        
+        sd_direct_deletion will detect sd direct deletions by looking for the following pattern:
+        [MH1->DEL->P1] -> random seq (with length>0) -> ([MH2-P2]) 
+        This pattern is based on the one represented in fabio's drawings
+        Args: 
+            self attributes of the EMMEJrealignment object
+        Returns:
+            DD = Inverted Deletion
+
+            'SD_direct_deletion': True or false 
+            'SD_DD_mutant_pattern': the genomic context after the repair mechanism
+            'SD_DD_MHrevc': the revc sequence of MH (MH2)
+            'SD_DD_Prevc': the revc sequence of P (P2)
+            'SD_DD_repeat_pat': the 2nd pattern found downstream the DSB
+            'SD_DD_repeat_pat_len': SD_DD_repeat_pat's length
+            'SD_DD_last_dimer': SD_DD_repeat_pat's last dimer useful for hidden markov
+            'SD_DD_dist_between_reps': distance between the patterns (Y sequence)
+            'SD_DD_motif_pos' : position of the pattern from the position of the DSB (pos)
+            'SD_DD_motif_freq_small' : frequence of the pattern in small window
+            'SD_DD_motif_freq_large' : frequence of the pattern in big window       
+            No extension: MH2 is the revc of MH found downstream
+                          P2 is the revc of MH found downstream
+            Extension: MH1 is MH not extended
+                       MH1_1 is MH during the extension
+                       MH1_2 is MH with max extension
+                       
+                       P1 is P not extended
+                       P1_1 is P during extension
+                       P1_2 is P with max extension
+
         
         returns:
             SD_direct_deletion: True/False
@@ -804,6 +911,7 @@ class emMEJrealignment:
             #print("MH1: "+ MH1)
             #print("P1: "+ P1)
             #print("ex: " + str(self.extension))
+            #searching the pattern in self.DSB_down
         
             if MH1_P1 in self.DSB_down[(len(self.INDEL) + len(P1) + 1):]:#1 nt is the necessary for the formation of the loop
                 SD_direct = True
@@ -815,9 +923,7 @@ class emMEJrealignment:
             if SD_direct:
                 print("BR found!")
             
-                # Creating mmej_marked
                 if not self.extension:
-                    #MH1 = non allungato, MH1_1 in fase di allungamento, MH1_2 =  MH1 a fine allungamento 
                     print("OFF")
                     rep_pat = MH1_P1
                     rep_pat_pos = self.mutant_sequence[
@@ -827,10 +933,10 @@ class emMEJrealignment:
                 
                     rep_pat_pos_2 = self.mutant_sequence[
                         (self.indel_position + len(self.INDEL) + len (P1)):].index(rep_pat)
-                    #print("rep_pat_pos: "+str (rep_pat_pos)) #distanza fra P1 e MH2
-                    #print("rep_pat_pos_2: "+str (rep_pat_pos_2))#distanza fra pos e MH2
+                    #print("rep_pat_pos: "+str (rep_pat_pos)) #distance from P1 to MH2
+                    #print("rep_pat_pos_2: "+str (rep_pat_pos_2))#distance from pos to MH2
 
-                    #definisci MH2 e P2
+                    #define MH2 e P2 according to distance from P1 to MH2
                     MH2 = self.mutant_sequence[self.indel_position + len(P1) + rep_pat_pos : 
                                 self.indel_position + len(P1) + rep_pat_pos + len(MH1)]
                 
@@ -839,10 +945,12 @@ class emMEJrealignment:
                 
                     #print("MH2: "+MH2)
                     #print("P2: "+P2)
-                    #seq from P1 to MH2
+                    #seq between the patterns
                     mmej_marked_inter_reps_seq = f'{self.DSB_down[len(P2) + self.indel_length :(len(P2) + self.indel_length + rep_pat_pos_2)]}'
+                    #SD_direct_deletion_mutant_pattern is useful to illustrate the genomic context in the output file
                     SD_direct_deletion_mutant_pattern = self.direct_deletions_mutant_pattern_generator(P2=P2, MH2=MH2,rep_pat=rep_pat)
                     
+                    #define SD_DD_motif_pos,SD_DD_motif_freq_small,SD_DD_motif_freq_large
                     temp_SD_direct_deletion=get_motifs_freqs(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr, large_window=1000,small_window=self.windowsize,motif=rep_pat,indel_type='DEL')
                     
                     
@@ -873,7 +981,7 @@ class emMEJrealignment:
                         'SD_DD_motif_freq_large' : SD_DD_motif_freq_large
                         }
                     self.loop_out_dict = _d
-                #self.sd_direct_deletion_dict = _d 
+                
               
                 if self.extension:
                       print("ON")
@@ -908,7 +1016,7 @@ class emMEJrealignment:
                           #if tmp_pos < (len(self.INDEL) + len(P1_2)): break
                           #why i sholud break the loop?
                         
-                      # elongation of P2, confined in extention_space[:*starting position of MH2_2*]
+                      # elongation of P
                       for i in range(1, rep_pat_pos_2):
                           P1_1 = self.ref_genome_down[(self.indel_length):(self.indel_length+MH_lengths+i)]
                           MH1_2_P1_1 = MH1_2 + P1_1
@@ -924,18 +1032,18 @@ class emMEJrealignment:
                       else:
                           MH1_2_P1_2=MH1_2_P1 #se P2 non viene allungato allora il BR rimane con R non allungato
                     
-                      # Creating mmej_marked
                       rep_pat = MH1_2_P1_2
                       rep_pat_pos = self.mutant_sequence[
                           (self.indel_position+len(P1_2)):].index(rep_pat)
                       #print("rep_pat_pos"+str (rep_pat_pos)) #distanza fra P1 e MH2
                     
+                      #seq from from P1 to MH2
                       mmej_marked_inter_reps_seq = f'{self.DSB_down[(len(P1_2) + self.indel_length):(len(P1_2) + rep_pat_pos)]}'
-                        #seq from P1 to MH2
                       #print(mmej_marked_inter_reps_seq)
 
+                      #SD_direct_deletion_mutant_pattern is useful to illustrate the genomic context in the output file
                       SD_direct_deletion_mutant_pattern = self.direct_deletions_mutant_pattern_generator(P2=P1_2, MH2=MH1_2,rep_pat=rep_pat)
-                      
+                      #define SD_DD_motif_pos,SD_DD_motif_freq_small,SD_DD_motif_freq_large                      
                       temp_SD_direct_deletion=get_motifs_freqs(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr, large_window=1000,small_window=self.windowsize,motif=rep_pat,indel_type='DEL')
                     
                     
@@ -969,14 +1077,13 @@ class emMEJrealignment:
                               'SD_DD_motif_freq_large' : SD_DD_motif_freq_large
                              }
                       self.loop_out_dict = _d
-                      #self.sd_direct_deletion_dict = _d 
             
         
     def sd_direct_insertions(self):
         """
         ####### CORRECTION ###########
         sd_direct_insertions will detect sd loop out MMEJ by looking for the following pattern:
-        [MH2->INS->P2] -> random seq -> [MH2->INS->P2]
+        [MH1->INS->P1] -> random seq -> [MH2->INS->P2]
         This pattern is based on the one represented in the fabios's notebook.
         
         Procedure works by first expanding MH2, then P2. This does not guarantee finding all, nor longest.
@@ -1183,10 +1290,385 @@ class emMEJrealignment:
                            }
                       self.loop_out_dict = _d 
 
+    def sd_direct_substitution(self):
+        print("self.INDEL :"+self.INDEL)
+        print("self.ANC:"+self.ANC)
+        print("self.DER:"+self.DER)
+        """
+        """
+
+        SD_DS_motif_pos, SD_DS_motif_freq_large, SD_DS_motif_freq_small = list(), list(), list()               
+        ###1st step is to bring MH1 and P1 from the ref seq 
+        for MH_lengths in self.MH_lengths:
+            MH1 = self.ref_genome_up [ - MH_lengths :]  
+            P1 = self.ref_genome_down [ len(self.ANC) : len(self.ANC) + MH_lengths ]
+            DS_pattern = MH1 + self.INDEL + P1 
+            print("DS_pattern: " + DS_pattern)
+            #print("MH1_P1: " + MH1_P1)
+            print("self.INDEL :" + self.INDEL)
+            print("MH1: "+ MH1)
+            print("P1: "+ P1)
+            #print("ex: " + str(self.extension))
+            
+            if DS_pattern in self.ref_genome_down [len(self.ANC) + 1:]:
+                SD_direct_substitution = True
+            else:
+                SD_direct_substitution = False 
+                print("BZR not found")
+
+            if SD_direct_substitution:
+                print("BZR found")
+                
+                if not self.extension:
+                    #MH1 = non allungato, MH1_1 in fase di allungamento, MH1_2 =  MH1 a fine allungamento 
+                    print("OFF")
+                    rep_pat = DS_pattern
+                    rep_pat_pos_2 = self.mutant_sequence[
+                    (self.indel_position):].index(rep_pat)
+                
+                    rep_pat_pos = self.mutant_sequence[
+                        (self.indel_position + len(self.INDEL) + len (P1)):].index(rep_pat)
+                    #print("rep_pat_pos: "+str (rep_pat_pos)) #distance between P1 e MH2 (Y seq)
+                    #print("rep_pat_pos_2: "+str (rep_pat_pos_2))#distance between pos e MH2
+
+                    #definisci MH2 e P2
+                    MH2 = self.mutant_sequence[
+                            self.indel_position + len(self.INDEL) + len(P1) + rep_pat_pos : 
+                                self.indel_position + len(self.INDEL) + len(P1) + rep_pat_pos + len(MH1)]
+                
+                    P2 = self.mutant_sequence[
+                            self.indel_position + len(self.INDEL) + len(P1) + 
+                            rep_pat_pos + len(MH1)+ len(self.INDEL) :
+                            self.indel_position + len(self.INDEL) + len(P1) +
+                            rep_pat_pos + len(MH1) + len(self.INDEL) + len(P1)]
+                
+                    print("MH2: "+MH2)
+                    print("P2: "+P2)
+                    
+                    mmej_marked_inter_reps_seq = f'{self.DSB_down[(len(self.DER))+ len(P2) : (len(self.DER))+ len(P2) + rep_pat_pos]}'
+                    print("Y seq :"+mmej_marked_inter_reps_seq)
+        
+                    
+                    # set output variables as attributes
+                    SD_D_Substitution_mutant_pattern = self.direct_substitution_mutant_pattern_generator(P2=P2, MH2=MH2,rep_pat=rep_pat)
+                    print (SD_D_Substitution_mutant_pattern)
+                                 
+                    SD_DS_P2 = P2
+                    SD_DS_MH2 = MH2
+                    SD_DS_repeat_pat = rep_pat
+                    SD_DS_repeat_pat_len = len (rep_pat)
+                    SD_DS_between_reps = len(mmej_marked_inter_reps_seq)
+                    SD_DS_last_dimer = SD_DS_repeat_pat[-2:]
+            
+                    temp_SD_direct_substitution=get_motifs_freqs(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr, large_window=1000,small_window=self.windowsize,motif=rep_pat,indel_type='DEL')
+                    print (temp_SD_direct_substitution)
+            
+                    SD_DS_motif_pos.append(temp_SD_direct_substitution[0])
+                    SD_DS_motif_freq_small.append(temp_SD_direct_substitution[1])
+                    SD_DS_motif_freq_large.append(temp_SD_direct_substitution[2])
+            
+       
+                    #setting output dict
+                    _d = {
+                        'SD_direct_substitution': SD_direct_substitution, 
+                        'SD_DS_mutant_pattern':SD_D_Substitution_mutant_pattern,
+                        'SD_DS_P2': SD_DS_P2,'SD_DS_MH2': SD_DS_MH2, 
+                        'SD_DS_repeat_pat': SD_DS_repeat_pat,
+                        'SD_DS_repeat_pat_len': SD_DS_repeat_pat_len,
+                        'SD_DS_dist_between_reps': SD_DS_between_reps,
+                        'SD_DS_last_dimer': SD_DS_last_dimer,
+                        'SD_DS_motif_pos': SD_DS_motif_pos,
+                        'SD_DS_motif_freq_small': SD_DS_motif_freq_small,
+                        'SD_DS_motif_freq_large': SD_DS_motif_freq_large
+                         }
+                    self.loop_out_dict = _d 
                 
 
+                if self.extension:
+                    print("ON")
+                    rep_pat = DS_pattern
+                    rep_pat_pos_2 = self.mutant_sequence[
+                            (self.indel_position):].index(rep_pat)
+                    #distanza fra pos e MH2
+                      
 
+                    for i in range (1, rep_pat_pos_2):
+                      ###elongation of MH 
+                         MH1_1 = self.ref_genome_up [(- MH_lengths -i):] 
+                         MH1_1_indel_P1 = MH1_1 + self.INDEL + P1
+                         print("self.INDEL :" + self.INDEL)
+                         print("MH1_1: "+ MH1_1)
+                         print("P1: "+ P1)
+                         if MH1_1_indel_P1 in self.ref_genome_down [ len(self.ANC) + len(P1):]:
+                             tmp_pos = self.ref_genome_down[ len(self.ANC) + (len(P1)):].index(MH1_1_indel_P1)
+                             #tmp_pos è la posizione del secondo template una volta allungato
+                             #print("tmp_pos: "+str(tmp_pos))
+
+                         else:
+                             MH1_2 = self.ref_genome_up[(- MH_lengths -i +1):]
+                             print("elongations finished")
+                             print("MH1_2: "+str(MH1_2))
+                             MH1_2_indel_P1 = MH1_2 + self.INDEL + P1
+                             print("MH1_2_indel_P1: " + MH1_2_indel_P1)
+                             tmp_pos_2 = self.ref_genome_down[
+                                     len(self.ANC) + len(P1):].index(MH1_2_indel_P1)
+                             #print("tmp_pos_2: " +str(tmp_pos_2))
+                             break
+                         #if tmp_pos < (len(self.INDEL) + len(P1_2)): break
+                         #why i sholud break the loop?
+   
+                    for i in range(1, rep_pat_pos_2):
+                        P1_1 = self.ref_genome_down[
+                                len(self.ANC) : len(self.ANC) + MH_lengths+i]
+                        print("P1_1:"+P1_1)
+                        MH1_2_indel_P1_1 = MH1_2 + self.INDEL + P1_1
+                        print(MH1_2_indel_P1_1)
+
+                        if MH1_2_indel_P1_1 in self.ref_genome_down [ len(self.ANC) + len(P1):]:
+                            continue
+                        else:
+                            P1_2 = P1_1[:-1]
+                            print("P1_2: "+P1_2)
+                            DS_pattern = MH1_2 + self.INDEL + P1_2
+                            print("DS_pattern : "+ DS_pattern)
+                            break
+                    else:
+                        
+                        DS_pattern=MH1_2_indel_P1 #se P2 non viene allungato allora il BR rimane con R non allungato
+                    
+                    rep_pat = DS_pattern
+                    rep_pat_pos_2 = self.mutant_sequence[
+                          (self.indel_position+len(self.INDEL)+len(P1_2)):].index(rep_pat)
+                    print("rep_pat_pos_2: "+str (rep_pat_pos_2)) #distanza fra P1 e MH2
+
+                    print("DS_pattern : "+ DS_pattern)
+                    mmej_marked_inter_reps_seq = f'{self.DSB_down[(len(self.DER))+ len(P1_2) : (len(self.DER))+ len(P1_2) + rep_pat_pos_2]}'
+                    print("Y seq :"+mmej_marked_inter_reps_seq) 
+                    
+                    # set output variables as attributes
+                    SD_D_Substitution_mutant_pattern = self.direct_substitution_mutant_pattern_generator(P2=P1_2, MH2=MH1_2,rep_pat=rep_pat)
+                    print (SD_D_Substitution_mutant_pattern)
+                                 
+                    SD_DS_P2 = P1_2
+                    SD_DS_MH2 = MH1_2
+                    SD_DS_repeat_pat = rep_pat
+                    SD_DS_repeat_pat_len = len (rep_pat)
+                    SD_DS_between_reps = len(mmej_marked_inter_reps_seq)
+                    SD_DS_last_dimer = SD_DS_repeat_pat[-2:]
+            
+                    temp_SD_direct_substitution=get_motifs_freqs(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr, large_window=1000,small_window=self.windowsize,motif=rep_pat,indel_type='DEL')
+                    print (temp_SD_direct_substitution)
+            
+                    SD_DS_motif_pos.append(temp_SD_direct_substitution[0])
+                    SD_DS_motif_freq_small.append(temp_SD_direct_substitution[1])
+                    SD_DS_motif_freq_large.append(temp_SD_direct_substitution[2])
+            
+       
+                    #setting output dict
+                    _d = {
+                        'SD_direct_substitution': SD_direct_substitution, 
+                        'SD_DS_mutant_pattern':SD_D_Substitution_mutant_pattern,
+                        'SD_DS_P2': SD_DS_P2,'SD_DS_MH2': SD_DS_MH2, 
+                        'SD_DS_repeat_pat': SD_DS_repeat_pat,
+                        'SD_DS_repeat_pat_len': SD_DS_repeat_pat_len,
+                        'SD_DS_dist_between_reps': SD_DS_between_reps,
+                        'SD_DS_last_dimer': SD_DS_last_dimer,
+                        'SD_DS_motif_pos': SD_DS_motif_pos,
+                        'SD_DS_motif_freq_small': SD_DS_motif_freq_small,
+                        'SD_DS_motif_freq_large': SD_DS_motif_freq_large
+                         }
+                    self.loop_out_dict = _d 
+
+    def sd_inverted_substitution(self):
+        print("self.ANC:"+self.ANC)
+        print("self.DER:"+self.DER)
+        """
+        """
+        
+        SD_IS_motif_pos, SD_IS_motif_freq_large, SD_IS_motif_freq_small = list(), list(), list()               
+        ###1st step is to bring MH1 and P1 from the ref seq 
+        for MH_lengths in self.MH_lengths:
+            MH1 = self.ref_genome_up [ - MH_lengths :]  
+            P1 = self.ref_genome_down [ len(self.ANC) : len(self.ANC) + MH_lengths ]
+            #create the IS_pattern and search it
+            IS_pattern = self.reverse_complement_converter(seq = MH1 + self.INDEL + P1)
+            print("IS_pattern: " + IS_pattern)
+            print("self.INDEL :" + self.INDEL)
+            print("MH1: "+ MH1)
+            print("P1: "+ P1)
+            #print("ex: " + str(self.extension))
+            #search the pattern after 1° P
+            if IS_pattern in self.ref_genome_down [len(self.ANC) + MH_lengths:]:
+                SD_inverted_substitution = True
+            else:
+                SD_inverted_substitution = False 
+                print("RZB not found")
+
+            if SD_inverted_substitution:
+                print("RZB found")
+               
+                if not self.extension:
+                    #MH1/P1 = not extended, MH2/P2 = MH and P revc not extended 
+                    print("OFF")
+                    rep_pat = IS_pattern
+                    #rep_pat_pos_2 is the distance of the pattern from DSB in the mutant context
+                    rep_pat_pos_2 = self.mutant_sequence[
+                    (self.indel_position):].index(rep_pat)
+                    #rep_pat_pos is the distance of the pattern from 1° P in the mutant context
+                    rep_pat_pos = self.mutant_sequence[
+                        (self.indel_position + len(self.INDEL) + len (P1)):].index(rep_pat)
+                    
+                    #define MH2 e P2
+                    Prevc = self.mutant_sequence[
+                            self.indel_position + len(self.INDEL) + len(P1) + rep_pat_pos : 
+                                self.indel_position + len(self.INDEL) + len(P1) + rep_pat_pos + len(MH1)]
                 
+                    MHrevc = self.mutant_sequence[
+                            self.indel_position + len(self.INDEL) + len(P1) + 
+                            rep_pat_pos + len(MH1)+ len(self.INDEL) :
+                            self.indel_position + len(self.INDEL) + len(P1) +
+                            rep_pat_pos + len(MH1) + len(self.INDEL) + len(P1)]
+                
+                    print("MHrevc: " + MHrevc)
+                    print("Prevc: " + Prevc)
+
+                    mmej_marked_inter_reps_seq = f'{self.DSB_down[(len(self.DER))+ len(P1) : (len(self.DER))+ len(P1) + rep_pat_pos]}'
+                    print("Y seq :"+mmej_marked_inter_reps_seq)
+        
+                    
+                    # set output variables as attributes
+                    SD_I_Substitution_mutant_pattern = self.inverted_deletions_mutant_pattern_generator(P1=P1, MH1=MH1,rep_pat=rep_pat)
+                    print (SD_I_Substitution_mutant_pattern)
+                                 
+                    SD_IS_Prevc = Prevc
+                    SD_IS_MHrevc = MHrevc
+                    SD_IS_repeat_pat = rep_pat
+                    SD_IS_repeat_pat_len = len (rep_pat)
+                    SD_IS_between_reps = len(mmej_marked_inter_reps_seq)
+                    SD_IS_last_dimer = SD_IS_repeat_pat[-2:]
+            
+                    temp_SD_inverted_substitution=get_motifs_freqs(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr, large_window=1000,small_window=self.windowsize,motif=rep_pat,indel_type='DEL')
+                    print (temp_SD_inverted_substitution)
+            
+                    SD_IS_motif_pos.append(temp_SD_inverted_substitution[0])
+                    SD_IS_motif_freq_small.append(temp_SD_inverted_substitution[1])
+                    SD_IS_motif_freq_large.append(temp_SD_inverted_substitution[2])
+            
+       
+                    #setting output dict
+                    _d = {
+                        'SD_inverted_substitution': SD_inverted_substitution, 
+                        'SD_IS_mutant_pattern':SD_I_Substitution_mutant_pattern,
+                        'SD_IS_Prevc': SD_IS_Prevc,'SD_DS_MHrevc': SD_IS_MHrevc, 
+                        'SD_IS_repeat_pat': SD_IS_repeat_pat,
+                        'SD_IS_repeat_pat_len': SD_IS_repeat_pat_len,
+                        'SD_IS_dist_between_reps': SD_IS_between_reps,
+                        'SD_IS_last_dimer': SD_IS_last_dimer,
+                        'SD_IS_motif_pos': SD_IS_motif_pos,
+                        'SD_IS_motif_freq_small': SD_IS_motif_freq_small,
+                        'SD_IS_motif_freq_large': SD_IS_motif_freq_large
+                         }
+                    self.snap_out_dict = _d 
+
+                if self.extension:
+                    print("ON")
+                    rep_pat = IS_pattern
+                    rep_pat_pos_2 = self.mutant_sequence[
+                            (self.indel_position):].index(rep_pat)
+                    #distance from pos to Prevc
+                      
+
+                    for i in range (1, rep_pat_pos_2):
+                      ###elongation of MH, creating the pattern and search it downstream 
+                         MH1_1 = self.ref_genome_up [(- MH_lengths -i):] 
+                         #MH1_1_indel_P1 = MH1_1 + self.INDEL + P1
+                         P1revc_indel_MH1_1revc = self.reverse_complement_converter(seq = MH1_1 + self.INDEL + P1) 
+                         print("self.INDEL :" + self.INDEL)
+                         print("MH1_1: "+ MH1_1)
+                         print("P1: "+ P1)
+                         if P1revc_indel_MH1_1revc in self.ref_genome_down [ len(self.ANC) + len(P1):]:
+                             tmp_pos = self.ref_genome_down[ len(self.ANC) + (len(P1)):].index(P1revc_indel_MH1_1revc)
+                             #tmp_pos is the distance of the BZR after elongation 
+                             #print("tmp_pos: "+str(tmp_pos))
+
+                         else:
+                             MH1_2 = self.ref_genome_up[(- MH_lengths -i +1):]
+                             print("elongations finished")
+                             print("MH1_2: "+str(MH1_2))
+                             P1revc_indel_MH1_1revc = self.reverse_complement_converter(seq = MH1_2 + self.INDEL + P1) 
+                             print("P1revc_indel_MH1_1revc : " + P1revc_indel_MH1_1revc)
+                             tmp_pos_2 = self.ref_genome_down[
+                                     len(self.ANC) + len(P1):].index(P1revc_indel_MH1_1revc)
+                             #print("tmp_pos_2: " +str(tmp_pos_2))
+                             break
+                    for i in range(1, rep_pat_pos_2):
+                        P1_1 = self.ref_genome_down[
+                                len(self.ANC) : len(self.ANC) + MH_lengths+i]
+                        print("P1_1:"+P1_1)
+                        #MH1_2_indel_P1_1 = MH1_2 + self.INDEL + P1_1
+                        #print(MH1_2_indel_P1_1)
+                        P1_1revc_indel_MH1_2revc = self.reverse_complement_converter(seq = MH1_2 + self.INDEL + P1_1)
+
+                        if P1_1revc_indel_MH1_2revc in self.ref_genome_down [ len(self.ANC) + len(P1):]:
+                            continue
+                        else:
+                            P1_2 = P1_1[:-1]
+                            print("P1_2: "+P1_2)
+                            IS_pattern = self.reverse_complement_converter(seq = MH1_2 + self.INDEL + P1_2)
+                            #DS_pattern = MH1_2 + self.INDEL + P1_2
+                            print("P1_2revc_indel_MH1_2revc : "+ IS_pattern)
+                            break
+                    else:
+                        
+                        IS_pattern=self.reverse_complement_converter(seq = MH1_2 + self.INDEL + P1)
+                        #if P2 doesn't get extended RZB remains with R not extendend P2 non viene allungato allora il BR rimane con R non allungato
+
+                    rep_pat = IS_pattern
+                    rep_pat_pos_2 = self.mutant_sequence[
+                          (self.indel_position+len(self.INDEL)+len(P1_2)):].index(rep_pat)
+                    print("rep_pat_pos_2: "+str (rep_pat_pos_2)) #distanza fra P1 e MH2
+
+                    print("IS_pattern : "+ IS_pattern)
+                    
+                    mmej_marked_inter_reps_seq = f'{self.DSB_down[(len(self.DER))+ len(P1_2) : (len(self.DER))+ len(P1_2) + rep_pat_pos_2]}'
+                    print("Y seq :"+mmej_marked_inter_reps_seq)
+        
+                    
+                    # set output variables as attributes
+                    SD_I_Substitution_mutant_pattern = self.inverted_deletions_mutant_pattern_generator(P1=P1_2, MH1=MH1_2,rep_pat=rep_pat)
+                    print (SD_I_Substitution_mutant_pattern)
+                                 
+                    SD_IS_Prevc = self.reverse_complement_converter(seq = P1_2) 
+                    SD_IS_MHrevc = self.reverse_complement_converter(seq = MH1_2)
+                    SD_IS_repeat_pat = rep_pat
+                    SD_IS_repeat_pat_len = len (rep_pat)
+                    SD_IS_between_reps = len(mmej_marked_inter_reps_seq)
+                    SD_IS_last_dimer = SD_IS_repeat_pat[-2:]
+            
+                    temp_SD_inverted_substitution=get_motifs_freqs(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr, large_window=1000,small_window=self.windowsize,motif=rep_pat,indel_type='DEL')
+                    print (temp_SD_inverted_substitution)
+            
+                    SD_IS_motif_pos.append(temp_SD_inverted_substitution[0])
+                    SD_IS_motif_freq_small.append(temp_SD_inverted_substitution[1])
+                    SD_IS_motif_freq_large.append(temp_SD_inverted_substitution[2])
+            
+       
+                    #setting output dict
+                    _d = {
+                        'SD_inverted_substitution': SD_inverted_substitution, 
+                        'SD_IS_mutant_pattern':SD_I_Substitution_mutant_pattern,
+                        'SD_IS_Prevc': SD_IS_Prevc,'SD_DS_MHrevc': SD_IS_MHrevc, 
+                        'SD_IS_repeat_pat': SD_IS_repeat_pat,
+                        'SD_IS_repeat_pat_len': SD_IS_repeat_pat_len,
+                        'SD_IS_dist_between_reps': SD_IS_between_reps,
+                        'SD_IS_last_dimer': SD_IS_last_dimer,
+                        'SD_IS_motif_pos': SD_IS_motif_pos,
+                        'SD_IS_motif_freq_small': SD_IS_motif_freq_small,
+                        'SD_IS_motif_freq_large': SD_IS_motif_freq_large
+                         }
+                    self.snap_out_dict = _d 
+
+
     def export_data(self):
         """
         Encapsulate all the relevant values into a dataframe object with standard
@@ -1222,7 +1704,15 @@ class emMEJrealignment:
             # SD_inverted_deletion
             'SD_inverted_deletion','SD_ID_mutant_pattern','SD_ID_MHrevc','SD_ID_Prevc',
             'SD_ID_repeat_pat','SD_ID_repeat_pat_len','SD_ID_last_dimer','SD_ID_dist_between_reps',
-            'SD_ID_motif_pos','SD_ID_motif_freq_small','SD_ID_motif_freq_large'
+            'SD_ID_motif_pos','SD_ID_motif_freq_small','SD_ID_motif_freq_large',
+            #SD_direct_substitution
+            'SD_direct_substitution','SD_DS_mutant_pattern','SD_DS_P2','SD_DS_MH2',
+            'SD_DS_repeat_pat','SD_DS_repeat_pat_len','SD_DS_dist_between_reps','SD_DS_last_dimer',
+            'SD_DS_motif_pos','SD_DS_motif_freq_small','SD_DS_motif_freq_large',
+            #SD_inverted_substitution
+             'SD_inverted_substitution','SD_IS_mutant_pattern','SD_IS_Prevc','SD_DS_MHrevc',
+             'SD_IS_repeat_pat','SD_IS_repeat_pat_len','SD_IS_dist_between_reps','SD_IS_last_dimer',
+             'SD_IS_motif_pos','SD_IS_motif_freq_small','SD_IS_motif_freq_large'                         
             # polymerase slippage
             #'pol_slip' , 'pol_slip_submotif' , 'pol_slippage_repeatsIndel',
             #'pol_slippage_repeatsDownstream', 'pos_slip_pos'
@@ -1256,7 +1746,17 @@ class emMEJrealignment:
             'SD_ID_MHrevc':str,'SD_ID_Prevc':str,
             'SD_ID_repeat_pat':str,'SD_ID_repeat_pat_len':str,'SD_ID_last_dimer':str,
             'SD_ID_dist_between_reps':str, 'SD_ID_motif_pos':str, 'SD_ID_motif_freq_small':str,
-            'SD_ID_motif_freq_large':str
+            'SD_ID_motif_freq_large':str,
+            #SD_direct_substitution
+            'SD_direct_substitution':str,'SD_DS_mutant_pattern':str,
+            'SD_DS_MH2':str,'SD_DS_P2':str, 
+            'SD_DS_repeat_pat':str, 'SD_DS_repeat_pat_len':str,'SD_DS_last_dimer':str,
+            'SD_DS_motif_pos':str, 'SD_DS_motif_freq_small':str, 'SD_DS_motif_freq_large':str,
+            #SD_inverted_substitution
+            'SD_inverted_substitution':str,'SD_IS_mutant_pattern':str,
+            'SD_IS_Prevc':str,'SD_DS_MHrevc':str,
+            'SD_IS_repeat_pat':str,'SD_IS_repeat_pat_len':str,'SD_IS_dist_between_reps':str,'SD_IS_last_dimer':str,
+            'SD_IS_motif_pos':str,'SD_IS_motif_freq_small':str,'SD_IS_motif_freq_large':str
             }
             # polymerase slippage
             #'pol_slip':str, 'pol_slip_submotif':str, 'pol_slippage_times':str,
@@ -1353,7 +1853,7 @@ class emMEJrealignment:
             repair of DNA double-strand breaks. Nucleic Acids Res. 45, 12848–12861 (2017).
             rep_pat (str): the following pattern: [MH2->INS->P2]
         Returns:
-            The pattern itself.
+            The mutant genomic context.
         """
         
         rep_pat_pos = self.mutant_sequence[(self.indel_position+len(P2)):].index(rep_pat)
@@ -1374,7 +1874,7 @@ class emMEJrealignment:
         Args:
             P2, MH2 (str):parts of the pattern as shown in fabio's drawings 
             Returns:
-            The pattern itself.
+            The mutant genomic context.
         """
  
         rep_pat_pos_2 = self.mutant_sequence[
@@ -1392,13 +1892,14 @@ class emMEJrealignment:
     def inverted_deletions_mutant_pattern_generator(self, P1: str, MH1: str,
                                  rep_pat:str):
         """
-        Create the MUTATED pattern that should occurs when a SD_direct_deletion acts, match the reference sequence in
+        Create the MUTATED pattern that should occurs when a SD_inverted_deletion acts, match the reference sequence in
         cases where SD-Snap back is possible, the pattern is:
-        [MH1-DELETED-P2] -> random seq -> [MH2->P2]
+        [MH1-DELETED-P1] -> random seq -> [MH2->P2] (MH2->P2 are the reverse complement of MH1 and P1)
         Args:
             P2, MH2 (str):parts of the pattern as shown in fabio's drawings 
+            rep_pat: the pattern founded = [MH2->P2]
             Returns:
-            The pattern itself.
+            The mutant genomic context.
         """
  
         P2revc = self.reverse_complement_converter(seq = P1)
@@ -1416,10 +1917,41 @@ class emMEJrealignment:
        
         return f'{mmej_marked_up}{mmej_marked_inter_reps_seq_2}{mmej_marked_rep_down}'
 
+    def direct_substitution_mutant_pattern_generator(self, P2: str, MH2: str, rep_pat:str):
     
-    
-    
-    
-    
+        rep_pat_pos = self.mutant_sequence[(self.indel_position+len(P2)):].index(rep_pat)
+        mmej_marked_rep_up = f'*MH1[{MH2}]|*Z_SEQ[{self.INDEL}]P1[{P2}]'
+        mmej_marked_up = f'{self.mutant_sequence[(self.indel_position-len(MH2)-10):(self.indel_position-len(MH2))]}{mmej_marked_rep_up}'
+        mmej_marked_rep_down = f'*MH2[{MH2}]*Z_SEQ [{self.INDEL}]P2[{P2}]{self.DSB_down[(rep_pat_pos+len(rep_pat)+len(P2)):(rep_pat_pos+len(rep_pat)+len(P2)+10)]}'
+        mmej_marked_inter_reps_seq = f'{self.DSB_down[(len(self.DER))+ len(P2) : (len(self.DER))+ len(P2) + rep_pat_pos]}'
 
 
+        return f'{mmej_marked_up}{mmej_marked_inter_reps_seq}{mmej_marked_rep_down}'
+
+    def inverted_deletions_mutant_pattern_generator(self, P1: str, MH1: str,
+            rep_pat:str):
+
+        """
+        Create the MUTATED pattern that should occurs when a SD_inverted_substitution acts, match the reference sequence in
+        cases where SD-Snap back is possible, the pattern is:
+        [MH1-Z-REVC-P1] -> random seq -> [MH2->Z_SEQ->P2] (MH2->P2 are the reverse complement of MH1 and P1)
+        Args:
+            P2, MH2 (str):parts of the pattern as shown in fabio's drawings
+            rep_pat: the pattern founded = [MH2->Zrevc->P2]
+            Returns:
+            The mutant genomic context.
+        """
+
+        P2revc = self.reverse_complement_converter(seq = P1)
+        MH2revc = self.reverse_complement_converter(seq = MH1)
+        rep_pat_pos_2 = self.mutant_sequence[
+                (self.indel_position + len(self.INDEL) + len (P1)):].index(rep_pat)
+        Z_seq = self.reverse_complement_converter(seq = self.INDEL)
+        
+        rep_pat_pos = self.mutant_sequence[(self.indel_position+len(P1)):].index(rep_pat)
+        mmej_marked_rep_up = f'*MH1[{MH1}]|*Z_REVC[{self.INDEL}]P1[{P1}]'
+        mmej_marked_up = f'{self.mutant_sequence[(self.indel_position-len(MH1)-10):(self.indel_position-len(MH1))]}{mmej_marked_rep_up}'
+        mmej_marked_rep_down = f'*MH2revc[{MH2revc}]Z_SEQ[{Z_seq}]P2revc[{P2revc}]{self.DSB_down[(rep_pat_pos+len(rep_pat)+len(P1)):(rep_pat_pos+len(rep_pat)+len(P1)+10)]}'
+        mmej_marked_inter_reps_seq_2 = f'{self.DSB_down[len(P1) + self.indel_length:(len(P1) + self.indel_length + rep_pat_pos_2)]}'
+
+        return f'{mmej_marked_up}{mmej_marked_inter_reps_seq_2}{mmej_marked_rep_down}'
