@@ -170,9 +170,10 @@ df.loc[:, 'ANC'] = df.loc[:, 'ANC'].str.upper()
 
 # defining indel type and length
 df.loc[:, 'indel_type'] = np.nan
-df.loc[(df['ANC'].str.len() > df['DER'].str.len()), 'indel_type'] = 'DEL'
+#df.loc[(df['ANC'].str.len() > df['DER'].str.len()), 'indel_type'] = 'DEL'
+df.loc[((df['ANC'].str.len() > 1) & (df['DER'].str.len() == 1)), 'indel_type'] = 'DEL'
 df.loc[(df['ANC'].str.len() < df['DER'].str.len()), 'indel_type'] = 'INS'
-df.loc[((df['ANC'].str.len() >= 1) & (df['DER'].str.len() >= 1)), 'indel_type'] = 'SUB'
+df.loc[((df['ANC'].str.len() > 1) & (df['DER'].str.len() > 1)), 'indel_type'] = 'SUB'
 df.loc[:, 'indel_len'] = np.nan
 df.loc[:, 'ref_len'] = df.loc[:,'ANC'].str.len()
 df.loc[:, 'alt_len'] = df.loc[:,'DER'].str.len()
@@ -367,7 +368,7 @@ col_to_save = ['CHR', 'POS', 'original_pos', 'variant_id', 'direction', #'REF','
             'SD_DS_repeat_pat','SD_DS_repeat_pat_len','SD_DS_dist_between_reps','SD_DS_last_dimer',
             'SD_DS_motif_pos','SD_DS_motif_freq_small','SD_DS_motif_freq_large',
             #SD_inverted_substitution
-            'SD_inverted_substitution','SD_IS_mutant_pattern','SD_IS_Prevc','SD_DS_MHrevc',
+            'SD_inverted_substitution','SD_IS_mutant_pattern','SD_IS_Prevc','SD_IS_MHrevc',
             'SD_IS_repeat_pat','SD_IS_repeat_pat_len','SD_IS_dist_between_reps','SD_IS_last_dimer',
             'SD_IS_motif_pos','SD_IS_motif_freq_small','SD_IS_motif_freq_large'
             
@@ -387,5 +388,5 @@ df.loc[:,'SD_direct_insertion'].fillna(value=False, inplace=True)
 df.loc[:,'SD_direct_deletion'].fillna(value=False, inplace=True)
 df.loc[:,'SD_inverted_deletion'].fillna(value=False, inplace=True)
 df.loc[:,'SD_direct_substitution'].fillna(value=False, inplace=True)
-
+df.loc[:,'SD_inverted_substitution'].fillna(value=False, inplace=True)
 df.loc[:, col_to_save].to_csv(f"{args['outputfile']}", sep='\t', index=False)

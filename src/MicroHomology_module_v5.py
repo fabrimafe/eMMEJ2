@@ -422,12 +422,12 @@ class emMEJrealignment:
             P1 = self.ref_genome_down [(self.indel_length):(self.indel_length+MH_lengths)]
             MH1_P1 = MH1 + P1
             MH1_P1revc = self.reverse_complement_converter(seq = MH1_P1) #make the revc)
-            #print("MH1_P1: " + MH1_P1)
-            #print("self.INDEL :" + self.INDEL)
-            #print("MH1: "+ MH1)
-            #print("P1: "+ P1)
-            #print("MH1_P1revc: "+ MH1_P1revc)
-            #print("ex: " + str(self.extension))
+            print("MH1_P1: " + MH1_P1)
+            print("self.INDEL :" + self.INDEL)
+            print("MH1: "+ MH1)
+            print("P1: "+ P1)
+            print("MH1_P1revc: "+ MH1_P1revc)
+            print("ex: " + str(self.extension))
         
             #searchind MH1_P1revc in self.DSB_down
             if MH1_P1revc in self.DSB_down[(len(self.INDEL) + len(P1) + 1):]:
@@ -469,8 +469,8 @@ class emMEJrealignment:
                     #SD_inverted_deletion_mutant_pattern is useful to illustrate the genomic context in the output file
                     SD_inverted_deletion_mutant_pattern = self.inverted_deletions_mutant_pattern_generator(P1=P1, MH1=MH1,rep_pat=rep_pat)
                     
-                    #print(mmej_marked_inter_reps_seq)
-                    #print(SD_inverted_deletion_mutant_pattern)
+                    print(mmej_marked_inter_reps_seq)
+                    print(SD_inverted_deletion_mutant_pattern)
 
                     #defining SD_ID_motif_pos,SD_ID_motif_freq_small,SD_ID_motif_freq_large
                     temp_SD_inverted_deletion=get_motifs_freqs(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr, large_window=1000,small_window=self.windowsize,motif=rep_pat,indel_type='DEL')
@@ -535,7 +535,7 @@ class emMEJrealignment:
                               MH1_2 = self.ref_genome_up[(- MH_lengths -i +1):]
                               #print("elongations finished")
                               #print("MH1_2: "+str(MH1_2))
-                              MH_2_P1 = MH1_2 + P1
+                              MH1_2_P1 = MH1_2 + P1
                               #print("MH1_2_P1_2: " + MH1_2_P1)
                               MH1_2_P1revc = self.reverse_complement_converter(seq = MH1_2_P1)
                               #print("MH1_2_P1_2revc: " + MH1_2_P1revc)
@@ -1537,7 +1537,7 @@ class emMEJrealignment:
         
                     
                     # set output variables as attributes
-                    SD_I_Substitution_mutant_pattern = self.inverted_deletions_mutant_pattern_generator(P1=P1, MH1=MH1,rep_pat=rep_pat)
+                    SD_I_Substitution_mutant_pattern = self.inverted_substitution_mutant_pattern_generator(P1=P1, MH1=MH1,rep_pat=rep_pat)
                     print (SD_I_Substitution_mutant_pattern)
                                  
                     SD_IS_Prevc = Prevc
@@ -1635,7 +1635,7 @@ class emMEJrealignment:
         
                     
                     # set output variables as attributes
-                    SD_I_Substitution_mutant_pattern = self.inverted_deletions_mutant_pattern_generator(P1=P1_2, MH1=MH1_2,rep_pat=rep_pat)
+                    SD_I_Substitution_mutant_pattern = self.inverted_substitution_mutant_pattern_generator(P1=P1_2, MH1=MH1_2,rep_pat=rep_pat)
                     print (SD_I_Substitution_mutant_pattern)
                                  
                     SD_IS_Prevc = self.reverse_complement_converter(seq = P1_2) 
@@ -1657,7 +1657,7 @@ class emMEJrealignment:
                     _d = {
                         'SD_inverted_substitution': SD_inverted_substitution, 
                         'SD_IS_mutant_pattern':SD_I_Substitution_mutant_pattern,
-                        'SD_IS_Prevc': SD_IS_Prevc,'SD_DS_MHrevc': SD_IS_MHrevc, 
+                        'SD_IS_Prevc': SD_IS_Prevc,'SD_IS_MHrevc': SD_IS_MHrevc, 
                         'SD_IS_repeat_pat': SD_IS_repeat_pat,
                         'SD_IS_repeat_pat_len': SD_IS_repeat_pat_len,
                         'SD_IS_dist_between_reps': SD_IS_between_reps,
@@ -1710,7 +1710,7 @@ class emMEJrealignment:
             'SD_DS_repeat_pat','SD_DS_repeat_pat_len','SD_DS_dist_between_reps','SD_DS_last_dimer',
             'SD_DS_motif_pos','SD_DS_motif_freq_small','SD_DS_motif_freq_large',
             #SD_inverted_substitution
-             'SD_inverted_substitution','SD_IS_mutant_pattern','SD_IS_Prevc','SD_DS_MHrevc',
+             'SD_inverted_substitution','SD_IS_mutant_pattern','SD_IS_Prevc','SD_IS_MHrevc',
              'SD_IS_repeat_pat','SD_IS_repeat_pat_len','SD_IS_dist_between_reps','SD_IS_last_dimer',
              'SD_IS_motif_pos','SD_IS_motif_freq_small','SD_IS_motif_freq_large'                         
             # polymerase slippage
@@ -1754,7 +1754,7 @@ class emMEJrealignment:
             'SD_DS_motif_pos':str, 'SD_DS_motif_freq_small':str, 'SD_DS_motif_freq_large':str,
             #SD_inverted_substitution
             'SD_inverted_substitution':str,'SD_IS_mutant_pattern':str,
-            'SD_IS_Prevc':str,'SD_DS_MHrevc':str,
+            'SD_IS_Prevc':str,'SD_IS_MHrevc':str,
             'SD_IS_repeat_pat':str,'SD_IS_repeat_pat_len':str,'SD_IS_dist_between_reps':str,'SD_IS_last_dimer':str,
             'SD_IS_motif_pos':str,'SD_IS_motif_freq_small':str,'SD_IS_motif_freq_large':str
             }
@@ -1910,7 +1910,7 @@ class emMEJrealignment:
         rep_pat_pos = self.mutant_sequence[(self.indel_position+len(P1)):].index(rep_pat)
         mmej_marked_rep_up = f'*MH1[{MH1}]|[DELETION]|P1[{P1}]'
         mmej_marked_up = f'{self.mutant_sequence[(self.indel_position-len(MH1)-10):(self.indel_position-len(MH1))]}{mmej_marked_rep_up}'
-        mmej_marked_rep_down = f'*P2[{P2revc}]|MH2[{MH2revc}]{self.DSB_down[(rep_pat_pos+len(rep_pat)+len(P1)):(rep_pat_pos+len(rep_pat)+len(P1)+10)]}'
+        mmej_marked_rep_down = f'*P2revc[{P2revc}]|MH2revc[{MH2revc}]{self.DSB_down[(rep_pat_pos+len(rep_pat)+len(P1)):(rep_pat_pos+len(rep_pat)+len(P1)+10)]}'
         #mmej_marked_inter_reps_seq = f'{self.DSB_down[(len(P2) + self.indel_length):(len(P2) + rep_pat_pos)]}'
 
         mmej_marked_inter_reps_seq_2 = f'{self.DSB_down[len(P1) + self.indel_length:(len(P1) + self.indel_length + rep_pat_pos_2)]}'
@@ -1928,7 +1928,7 @@ class emMEJrealignment:
 
         return f'{mmej_marked_up}{mmej_marked_inter_reps_seq}{mmej_marked_rep_down}'
 
-    def inverted_deletions_mutant_pattern_generator(self, P1: str, MH1: str,
+    def inverted_substitution_mutant_pattern_generator(self, P1: str, MH1: str,
             rep_pat:str):
 
         """

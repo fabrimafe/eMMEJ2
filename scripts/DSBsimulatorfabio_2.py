@@ -106,12 +106,16 @@ def fa2deletion(refFA,chrom,pos,min_length,max_length):
 #    seq_ref120bp=len(refFA.fetch(chr,pos-120,pos+120))
     ancestral_state_vcf=refFA.fetch(chrom,pos-1,pos+indel_length)
     derived_state_vcf=refFA.fetch(chrom,pos-1,pos)
+    ANCESTRAL_STATE_VCF=ancestral_state_vcf.upper()
+    DERIVED_STATE_VCF= derived_state_vcf.upper()
+
     indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
     if (indelNs>-3):
         print("N found in indel")
         return('error')
     else:
-        return(chrom,pos,ancestral_state_vcf,derived_state_vcf,indel_length)
+        return(chrom,pos,ANCESTRAL_STATE_VCF,DERIVED_STATE_VCF)
+        #return(chrom,pos,ANCESTRAL_STATE_VCF, DERIVED_STATE_VCF,indel_length)
 
 def fa2deletion_MMEJ(refFA,chrom,pos,MH_length,max_distance_MMEJ):
     """Function to create deletions arising from MMEJ on a fasta file giving outuput in vcf format. First and last 2kbp of chromosomes should not be used.
