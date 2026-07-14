@@ -199,19 +199,20 @@ def fa2insertion_snapback(refFA,chrom,pos,MH_length,SD_motif_length,max_distance
     #identifing MH, SD (P) and the window
     SD_motif=refFA.fetch(chrom,pos+pre_SD_length,pos+SD_motif_length+pre_SD_length)
     MH_seq=refFA.fetch(chrom,pos-MH_length,pos)
-    seq_window=refFA.fetch(chrom,pos+SD_motif_length+pre_SD_length,pos+pre_SD_length+max_distance-1)
+    seq_window=refFA.fetch(chrom,pos+SD_motif_length+pre_SD_length+1,pos+pre_SD_length+max_distance-1)
     seq_window_fabio=refFA.fetch(chrom,pos-MH_length,pos+max_distance-1)
     #seq_window_fabio is only for the print
     #1° MH is always in position 0 in seq_window_fabio
     #create the revc of the SD_motif and search it after the length of 1° SD_length
     SD_revc=seq2revcomplement(SD_motif)
-    i_SD=seq_window.find(SD_revc)+pre_SD_length
+    i_SD=seq_window.find(SD_revc)+pre_SD_length + 1 #cerca 1 nt dopo SD, 1 nt is necessary for the bending of the strand
     print("seq window from 1° MH : "+seq_window_fabio)
+    print("seq window from  : "+seq_window)
     print("MH seq: "+MH_seq)
     print("SD motif: "+SD_motif)
     print("position 2nd SD motif from 1° SD motif, snapback_loop: "+str(i_SD))
     #print("MH+SD+..+SDrevc: "+refFA.fetch(chr,pos-MH_length,pos+i_SD+SD_motif_length))
-    if i_SD < 0:
+    if i_SD < 1:
         print("no SD possible in range")
         return("error")
     else:
@@ -221,7 +222,7 @@ def fa2insertion_snapback(refFA,chrom,pos,MH_length,SD_motif_length,max_distance
         #once the SD (P) has been founded i search the rec of MH
         MH_revc=seq2revcomplement(MH_seq)
         i_MH=seq_window.find(MH_revc)
-        if i_MH < 0:
+        if i_MH < 1:
             print("no MH possible in range")
             return("error")
         else:
@@ -279,36 +280,40 @@ def fa2deletion_snapback(refFA,chrom,pos,MH_length,SD_motif_length,max_distance,
     MH_seq=refFA.fetch(chrom,pos-MH_length,pos)
     X_seq=refFA.fetch(chrom,pos,pos+X_length)
 
-    #seq_window=refFA.fetch(chrom,pos+SD_motif_length+pre_SD_length,pos+pre_SD_length+max_distance-1)
-    seq_window=refFA.fetch(chrom,pos+X_length+SD_motif_length,pos+max_distance-1)
+    #seq_window=the seq where the we search the MHrevc motif, it starts from 1nt after the first SD to max distance
+    seq_window=refFA.fetch(chrom,pos+X_length+SD_motif_length+1,pos+max_distance-1)
     seq_window_fabio=refFA.fetch(chrom,pos-MH_length,pos+max_distance-1)
     #seq_window_fabio is only for the print
     #1° MH is always in position 0 in seq_window_fabio
     #create the revc of SD ad search it after pre_SD_length
     SD_revc=seq2revcomplement(SD_motif)
-    i_SD=seq_window.find(SD_revc)+pre_SD_length #trova SD_revc in seq_window e da la distanza fra i due sd centrali 
+    Y_length=seq_window.find(SD_revc)+1
+    #Y_length is the distance between SD motif and SDrevc motif, +1 because +1 in the seq.window  
+    print(" Y_length: "+str(Y_length))
     print("seq window: "+seq_window_fabio)
     print("MH seq: "+MH_seq)
     print("SD motif: "+SD_motif)
     print("X_seq - deleted seq -  "+X_seq)
-    print("distance between SD motif and SDrevc motif, snapback-loop: "+str(i_SD))
+    print("distance between SD motif and SDrevc motif, snapback-loop: "+str(Y_length))
     
-    if i_SD < 0:
+    if Y_length < 1:
         print("no SD possible in range")
         return("error")
     else:
-        i_SD_2=i_SD+SD_motif_length
+        Y_length_SD=Y_length+SD_motif_length
         #spacer + 2°SD
         #seq_window=refFA.fetch(chrom,pos+i_SD+SD_motif_length,pos+max_distance)
         #create the revc of Mh ad searching right after the 2°SSD position in an windows with the same length of the 1° window
-        seq_window=refFA.fetch(chrom,pos+X_length+SD_motif_length+i_SD_2,pos+X_length+SD_motif_length+i_SD_2+MH_length)
+        seq_window=refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length_SD,pos+X_length+SD_motif_length+Y_length_SD+MH_length)
+        #seq_window is the window after the 2° SD, its length is egual to MH_length
         MH_revc=seq2revcomplement(MH_seq)
-        i_MH=seq_window.find(MH_revc)
-        if i_MH < 0:
+        i_MH=seq_window.find(MH_revc)  
+        if i_MH != 0:
             print("no MH possible in range")
             return("error")
         else:
-            i_MH=i_MH+i_SD+SD_motif_length
+            #if i_MH is 0, MHrevc is after SDrevc, creating the BR motif 
+            Y_B_R=Y_length+SD_motif_length+MH_length
             indel_length=X_length #the indel length is the same length of X
             print("SD_revc: "+SD_revc)
             print("MH_revc: "+MH_revc)
@@ -316,13 +321,16 @@ def fa2deletion_snapback(refFA,chrom,pos,MH_length,SD_motif_length,max_distance,
             print("MH|DEL X |SD|snapback-loop|SDrevc|MHrevc: ")# creating a useful print in the log of before mechanism context
 
             
-            indel_seq_annotated=refFA.fetch(chrom,pos-MH_length,pos)+"|"+refFA.fetch(chrom,pos,pos+X_length)+"|"+refFA.fetch(chrom,pos+X_length,pos+X_length+SD_motif_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length,pos+X_length+SD_motif_length+i_SD)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+i_SD,pos+X_length+SD_motif_length+i_SD+SD_motif_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+i_SD+SD_motif_length,pos+X_length+SD_motif_length+i_SD+SD_motif_length+MH_length)
+            indel_seq_annotated=refFA.fetch(chrom,pos-MH_length,pos)+"|"+refFA.fetch(chrom,pos,pos+X_length)+"|"+refFA.fetch(chrom,pos+X_length,pos+X_length+SD_motif_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length,pos+X_length+SD_motif_length+Y_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length,pos+X_length+SD_motif_length+Y_length+MH_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length+MH_length,pos+X_length+SD_motif_length+Y_length+MH_length+SD_motif_length)
             
+            print(indel_seq_annotated)
+
             indel_seq=X_seq           
             indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
             #the genomic contex after the mechanism
-            seq_after_deletion=refFA.fetch(chrom,pos-MH_length,pos)+"|"+refFA.fetch(chrom,pos+X_length,pos+X_length+SD_motif_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length,pos+X_length+SD_motif_length+i_SD)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+i_SD,pos+X_length+SD_motif_length+i_SD+SD_motif_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+i_SD+SD_motif_length,pos+X_length+SD_motif_length+i_SD+SD_motif_length+MH_length)
+            seq_after_deletion=refFA.fetch(chrom,pos-MH_length,pos)+"|"+refFA.fetch(chrom,pos+X_length,pos+X_length+SD_motif_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length,pos+X_length+SD_motif_length+Y_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length,pos+X_length+SD_motif_length+Y_length+MH_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length+MH_length,pos+X_length+SD_motif_length+Y_length+MH_length+SD_motif_length)
             
+
             #creating ANC adn DER with the nt anchor
             derived_state=refFA.fetch(chrom,pos-1,pos)
             ancestral_state=refFA.fetch(chrom,pos-1,pos)+indel_seq
@@ -376,7 +384,7 @@ def fa2SD_direct_insertion(refFA,chrom,pos,MH_length,SD_motif_length,max_distanc
         seq_window=refFA.fetch(chrom,pos+i_MH+MH_length,pos+max_distance)
         #up here seq_window is from 2°MH to max distance, it's used to find 2°SD
         i_SD=seq_window.find(SD_motif)
-        if i_SD < 0:
+        if i_SD < 1:
             print("no SD possible in range")
             return "error" 
         else:
@@ -455,7 +463,7 @@ def fa2SD_direct_deletion(refFA,chrom,pos,MH_length,SD_motif_length,max_distance
         #down here seq_window is from 2°MH to max SD_motif_length
         i_SD=seq_window.find(SD_motif) 
         #position of 2° SD from the end of 2° MH che in questo caso è sempre 0
-        if i_SD < 0:
+        if i_SD != 0:
             print("no SD possible in range")
             return("error") 
         else:
@@ -629,14 +637,14 @@ def fa2SD_snapback_substitution(refFA,chrom,pos,MH_length,SD_motif_length,max_di
     #create the revc of SD and search it in the window after X-Seq
     SD_revc=seq2revcomplement(SD_motif)
     print("SD_revc:" + SD_revc)
-    Y_length=seq_window.find(SD_revc)
+    Y_length=seq_window.find(SD_revc) + 1 # from 1 nt after SD, 1 nt is necessary for the fomration of the loop
     print("Y_length: " + str(Y_length))
     print("seq window from 1° MH: "+seq_window_fabio)
     print("MH seq: "+MH_seq)
     print("SD motif: "+SD_motif)
     print("X_seq: " + X_seq)
 #the 1° MH is always at 0 pos in seq_window_fabio
-    if Y_length < 0:
+    if Y_length < 1:
         print("no SD possible in range")
         return("error")
     else:

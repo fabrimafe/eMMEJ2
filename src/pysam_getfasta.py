@@ -77,6 +77,64 @@ def get_motifs_pos(ref, CHR, POS, motif, windowsize):
             out = f"{out},{j}"
     return out[1:]
 
+def get_motifs_pos_2(ref, CHR, POS, motif, windowsize, down_start, up_start):
+    """
+    A function that returns all positions with the motif
+    in a given context (small_window)
+    """
+    context = ref.fetch(CHR,POS-windowsize ,POS+windowsize).upper()
+    mmej_motif_pos = np.array([m.end() for m in re.finditer(motif, context, overlapped=True)])
+
+    mmej_motif_pos = mmej_motif_pos - (len(context)/2)-1 #-1 makes it 1-based and starting after the break (so 1st pos after break is 1);
+# This also is such that 0 position is now -1 (last dimer)
+    #mmej_motif_pos = mmej_motif_pos[(mmej_motif_pos>(-1*small_window)) &
+#                        (mmej_motif_pos<(small_window))]
+#    mmej_motif_pos = mmej_motif_pos.tolist()
+    mmej_motif_pos = mmej_motif_pos [(mmej_motif_pos <= down_start) | (mmej_motif_pos >= up_start)]
+
+
+    if len(mmej_motif_pos)>0:
+        out = ''
+        for i in mmej_motif_pos:
+            j=str(int(i))
+            out = f"{out},{j}"
+        return out[1:]
+    else:
+        return ''
+
+
+def get_motifs_pos_2(ref, CHR, POS, motif, windowsize, down_start, up_start):
+    """
+    A function that returns all positions with the motif
+    in a given context (small_window)
+    down_start and up_start creates the range in which the pos_motifs are eliminated, that change in between der e ins, 
+    in sub are the same of the del
+    thanks to m.start IT GIVES THE DISTANCE BETWEEN POS AND THE NT BEFORE THE OTHER MOTIFS
+    """
+    context = ref.fetch(CHR,POS-windowsize ,POS+windowsize).upper()
+    mmej_motif_pos = np.array([m.start() for m in re.finditer(motif, context, overlapped=True)])
+
+    mmej_motif_pos = mmej_motif_pos - (len(context)/2)-1 #-1 makes it 1-based and starting after the break (so 1st pos after break is 1);
+# This also is such that 0 position is now -1 (last dimer)
+    #mmej_motif_pos = mmej_motif_pos[(mmej_motif_pos>(-1*small_window)) &
+#                        (mmej_motif_pos<(small_window))]
+#    mmej_motif_pos = mmej_motif_pos.tolist()
+    
+    mmej_motif_pos = mmej_motif_pos [(mmej_motif_pos <= down_start) | (mmej_motif_pos >= up_start)]
+
+
+    if len(mmej_motif_pos)>0:
+        out = ''
+        for i in mmej_motif_pos:
+            j=str(int(i))
+            out = f"{out},{j}"
+        return out[1:]
+    else:
+        return ''
+
+
+
+
 
 def get_motifs_freqs(ref, CHR, POS, large_window, small_window, motif, indel_type):
     """
