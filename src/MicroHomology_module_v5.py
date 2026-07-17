@@ -422,12 +422,12 @@ class emMEJrealignment:
             P1 = self.ref_genome_down [(self.indel_length):(self.indel_length+MH_lengths)]
             MH1_P1 = MH1 + P1
             MH1_P1revc = self.reverse_complement_converter(seq = MH1_P1) #make the revc)
-            print("MH1_P1: " + MH1_P1)
-            print("self.INDEL :" + self.INDEL)
-            print("MH1: "+ MH1)
-            print("P1: "+ P1)
-            print("MH1_P1revc: "+ MH1_P1revc)
-            print("ex: " + str(self.extension))
+            #print("MH1_P1: " + MH1_P1)
+            #print("self.INDEL :" + self.INDEL)
+            #print("MH1: "+ MH1)
+            #print("P1: "+ P1)
+            #print("MH1_P1revc: "+ MH1_P1revc)
+            #print("ex: " + str(self.extension))
         
             #searchind MH1_P1revc in self.DSB_down
             if MH1_P1revc in self.DSB_down[(len(self.INDEL) + len(P1) + 1):]:
@@ -435,14 +435,14 @@ class emMEJrealignment:
 
             else:
                 SD_inverted_deletion = False
-                print("BR not found")
+                #print("BR not found")
             
             if SD_inverted_deletion:
-                print("BR found!!!")
+                #print("BR found!!!")
             
                 
                 if not self.extension:
-                    print("OFF")
+                    #print("OFF")
                     rep_pat = MH1_P1revc
                     rep_pat_pos = self.mutant_sequence[
                     (self.indel_position+len(P1)):].index(rep_pat)
@@ -482,14 +482,16 @@ class emMEJrealignment:
                     SD_ID_motif_freq_large.append(temp_SD_inverted_deletion[2])
                     
                     # +1 and - 1 because 1 nt is necessary due to the fomration of the loop in snap_back mechanism
-                    up_start= len(self.INDEL) + len(P1) + 1
-                    down_start = - len(MH1)- 1
+                    up_start= len(self.INDEL) + len(P1) + len (rep_pat) + 1
+                    down_start = - len(MH1) - len (rep_pat) - 1
                     print(up_start)
                     print(down_start)
 
-                    SD_ID_motif_pos=get_motifs_pos_2(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=rep_pat,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
+                    #SD_ID_motif_pos_2=get_motifs_pos_2(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=rep_pat,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
                     
-                    print(SD_ID_motif_pos)
+                    #print(SD_ID_motif_pos)
+                    SD_ID_motif_pos_3=get_motifs_pos_3(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=rep_pat,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
+
                    #       
                     SD_inverted_deletion_P2 = P2
                     SD_inverted_deletion_MH2 = MH2
@@ -508,7 +510,7 @@ class emMEJrealignment:
                         'SD_ID_repeat_pat_len':SD_inverted_deletion_repeat_pat_len,
                         'SD_ID_last_dimer': SD_inverted_deletion_last_dimer,
                         'SD_ID_dist_between_reps': dist_between_reps,
-                        'SD_ID_motif_pos' : SD_ID_motif_pos,
+                        'SD_ID_motif_pos' : SD_ID_motif_pos_3,
                         'SD_ID_motif_freq_small' : SD_ID_motif_freq_small,
                         'SD_ID_motif_freq_large' : SD_ID_motif_freq_large
                         }
@@ -522,12 +524,13 @@ class emMEJrealignment:
                       print("rep_pat: "+rep_pat)
                       rep_pat_pos_2 = self.mutant_sequence[
                               (self.indel_position + len(self.INDEL) + len (P1))+1:].index(rep_pat)
+                      max_elongation_p = rep_pat_pos_2 // 2
 
                             #distance from the end of SD and start of SDrevc
                       print("distance from the end of SD and start of SDrevc: " + str(rep_pat_pos_2))
         
                       for i in range (0, self.windowsize):
-                      ###elongation of MH 
+                      ###elongation of MH, from 0 to windowsize beacuse we can extend Mh at the max, without limits, according to the pattern 
                           MH1_1 = self.ref_genome_up [(- MH_lengths -i):] 
                           #P1_1 = self.ref_genome_down [(self.indel_length):(self.indel_length+MH_lengths+i)]
                           MH1_1_P1 = MH1_1 + P1
@@ -560,8 +563,9 @@ class emMEJrealignment:
                           #why i should break the loop?
                       
 
-                      # elongation of P
-                      for i in range(1, rep_pat_pos_2):
+                      # elongation of P, from 1 to max_elongation_p becasue 1 is the 1 nt necessary fro the formation of the loop,
+                      # and max_elongation_p is the distance from 1° and 2° SD / 2,
+                      for i in range(1, max_elongation_p):
                           P1_1 = self.ref_genome_down[(self.indel_length):(self.indel_length+MH_lengths+i)]
                           MH1_2_P1_1 = MH1_2 + P1_1
                           MH1_2_P1_1revc = self.reverse_complement_converter(seq = MH1_2_P1_1)
@@ -587,10 +591,12 @@ class emMEJrealignment:
                       #seq between the pattern
                       mmej_marked_inter_reps_seq = f'{self.DSB_down[(len(P1_2) + self.indel_length):(len(P1_2) + rep_pat_pos)]}'
                         #seq from P1 to MH2
-                      print(mmej_marked_inter_reps_seq)
+                      #print(mmej_marked_inter_reps_seq)
                       #SD_inverted_deletion_mutant_pattern is useful to illustrate the genomic context in the output file
+                      
                       SD_inverted_deletion_mutant_pattern = self.inverted_deletions_mutant_pattern_generator(P1=P1_2, MH1=MH1_2,rep_pat=rep_pat)
                       #print(SD_inverted_deletion_mutant_pattern)
+                      
                       #define SD_ID_motif_pos,SD_ID_motif_freq_small, SD_ID_motif_freq_large
                       temp_SD_inverted_deletion=get_motifs_freqs(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr, large_window=1000,small_window=self.windowsize,motif=rep_pat,indel_type='DEL')
                       #print(temp_SD_inverted_deletion)
@@ -602,13 +608,16 @@ class emMEJrealignment:
                       SD_ID_motif_freq_large.append(temp_SD_inverted_deletion[2])
 
                       #-1 and + 1 because 1 nt is necessary due to the formation of the loop
-                      up_start= len(self.INDEL) + len(P1_2) + 1
-                      down_start = - len(MH1_2)- 1
-                      print(up_start)
-                      print(down_start)
+                      up_start= len(self.INDEL) + len(P1_2) + len(rep_pat) + 1
+                      down_start = - len(MH1_2) - len(rep_pat)
+                      print("rep_pat: "+rep_pat)
+                      print("up_start: "+str(up_start))
 
-                      SD_ID_motif_pos=get_motifs_pos_2(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=rep_pat,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
-                    
+                      print("down_start : "+str (down_start))
+
+                      #SD_ID_motif_pos_2=get_motifs_pos_2(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=rep_pat,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
+                      
+                      SD_ID_motif_pos_3=get_motifs_pos_3(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=rep_pat,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
 
                       SD_inverted_deletion_P2 = self.reverse_complement_converter(seq = P1_2)
                       SD_inverted_deletion_MH2 = self.reverse_complement_converter(seq = MH1_2)
@@ -629,7 +638,7 @@ class emMEJrealignment:
                           'SD_ID_repeat_pat_len':SD_inverted_deletion_repeat_pat_len,
                           'SD_ID_last_dimer': SD_inverted_deletion_last_dimer,
                           'SD_ID_dist_between_reps': dist_between_reps,
-                          'SD_ID_motif_pos' : SD_ID_motif_pos,
+                          'SD_ID_motif_pos' : SD_ID_motif_pos_3,
                           'SD_ID_motif_freq_small' : SD_ID_motif_freq_small,
                           'SD_ID_motif_freq_large' : SD_ID_motif_freq_large
                              }
@@ -982,16 +991,21 @@ class emMEJrealignment:
                     #SD_DD_motif_pos.append(temp_SD_direct_deletion[0])
                     
                     #tutto ciò vale solo per dd in inverted devi mettere il + 1 idiota in up e down
-                    up_start = len(self.INDEL) + len (P1)
-                    down_start = - len(MH1)
+                    up_start = len(self.INDEL) + len (P1) + len(rep_pat)
+                    down_start = - len(MH1) - len(rep_pat)
                     print(up_start)
                     print(down_start)
-              
-                    SD_DD_motif_pos=get_motifs_pos_2(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=rep_pat,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
+                    print(self.pos_on_chr)
+                    print(rep_pat)
+                    #SD_DD_motif_pos_2=get_motifs_pos_2(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=rep_pat,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
                     
-                    print(SD_DD_motif_pos)
+                    #print(SD_DD_motif_pos_2)
 
+                    SD_DD_motif_pos_3=get_motifs_pos_3(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=rep_pat,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
+                    print(SD_DD_motif_pos_3)
+                    #SD_DD_motif_pos_2.append(temp_SD_direct_deletion[0])
                     
+                    #print(temp_SD_direct_deletion)
                     SD_DD_motif_freq_small.append(temp_SD_direct_deletion[1])
                     SD_DD_motif_freq_large.append(temp_SD_direct_deletion[2])
 
@@ -1013,7 +1027,7 @@ class emMEJrealignment:
                         'SD_DD_repeat_pat_len':SD_direct_deletion_repeat_pat_len,
                         'SD_DD_last_dimer': SD_direct_deletion_last_dimer,
                         'SD_DD_dist_between_reps': dist_between_reps,
-                        'SD_DD_motif_pos' : SD_DD_motif_pos,
+                        'SD_DD_motif_pos' : SD_DD_motif_pos_3,
                         'SD_DD_motif_freq_small' : SD_DD_motif_freq_small,
                         'SD_DD_motif_freq_large' : SD_DD_motif_freq_large
                         }
@@ -1096,15 +1110,17 @@ class emMEJrealignment:
 
                       
                     #tutto ciò vale solo per dd in inverted devi mettere il + 1 idiota in up e down
-                      up_start = len(self.INDEL) + len (P1_2)
-                      down_start = - len(MH1_2)
+                      up_start = len(self.INDEL) + len (P1_2) + len(rep_pat)
+                      down_start = - len(MH1_2) - len(rep_pat) 
                       #print(up_start)
                       #print(down_start)
+                      #print("pos on chrom: "+self.pos_on_chr)
               
-                      SD_DD_motif_pos=get_motifs_pos_2(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=rep_pat,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
+                      #SD_DD_motif_pos=get_motifs_pos_2(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=rep_pat,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
                     
                       #print(SD_DD_motif_pos)
-
+                      SD_DD_motif_pos_3=get_motifs_pos_3(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=rep_pat,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
+                      
                       SD_direct_deletion_P2 = P1_2
                       SD_direct_deletion_MH2 = MH1_2
                       SD_direct_deletion_repeat_pat = rep_pat
@@ -1124,7 +1140,7 @@ class emMEJrealignment:
                               'SD_DD_repeat_pat_len':SD_direct_deletion_repeat_pat_len,
                               'SD_DD_last_dimer': SD_direct_deletion_last_dimer,
                               'SD_DD_dist_between_reps': dist_between_reps,
-                              'SD_DD_motif_pos' : SD_DD_motif_pos,
+                              'SD_DD_motif_pos' : SD_DD_motif_pos_3,
                               'SD_DD_motif_freq_small' : SD_DD_motif_freq_small,
                               'SD_DD_motif_freq_large' : SD_DD_motif_freq_large
                              }

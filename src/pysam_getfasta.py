@@ -1,4 +1,4 @@
-# 29.06.2022
+#29.06.2022
 
 import pandas as pd
 from pysam import FastaFile
@@ -77,31 +77,6 @@ def get_motifs_pos(ref, CHR, POS, motif, windowsize):
             out = f"{out},{j}"
     return out[1:]
 
-def get_motifs_pos_2(ref, CHR, POS, motif, windowsize, down_start, up_start):
-    """
-    A function that returns all positions with the motif
-    in a given context (small_window)
-    """
-    context = ref.fetch(CHR,POS-windowsize ,POS+windowsize).upper()
-    mmej_motif_pos = np.array([m.end() for m in re.finditer(motif, context, overlapped=True)])
-
-    mmej_motif_pos = mmej_motif_pos - (len(context)/2)-1 #-1 makes it 1-based and starting after the break (so 1st pos after break is 1);
-# This also is such that 0 position is now -1 (last dimer)
-    #mmej_motif_pos = mmej_motif_pos[(mmej_motif_pos>(-1*small_window)) &
-#                        (mmej_motif_pos<(small_window))]
-#    mmej_motif_pos = mmej_motif_pos.tolist()
-    mmej_motif_pos = mmej_motif_pos [(mmej_motif_pos <= down_start) | (mmej_motif_pos >= up_start)]
-
-
-    if len(mmej_motif_pos)>0:
-        out = ''
-        for i in mmej_motif_pos:
-            j=str(int(i))
-            out = f"{out},{j}"
-        return out[1:]
-    else:
-        return ''
-
 
 def get_motifs_pos_2(ref, CHR, POS, motif, windowsize, down_start, up_start):
     """
@@ -112,13 +87,14 @@ def get_motifs_pos_2(ref, CHR, POS, motif, windowsize, down_start, up_start):
     thanks to m.start IT GIVES THE DISTANCE BETWEEN POS AND THE NT BEFORE THE OTHER MOTIFS
     """
     context = ref.fetch(CHR,POS-windowsize ,POS+windowsize).upper()
-    mmej_motif_pos = np.array([m.start() for m in re.finditer(motif, context, overlapped=True)])
+    mmej_motif_pos = np.array([m.end() for m in re.finditer(motif, context, overlapped=True)])
 
-    mmej_motif_pos = mmej_motif_pos - (len(context)/2)-1 #-1 makes it 1-based and starting after the break (so 1st pos after break is 1);
+    mmej_motif_pos = mmej_motif_pos - (len(context)/2) #add -1 for making it 1-based and starting after the break (so 1st pos after break is 1);
 # This also is such that 0 position is now -1 (last dimer)
     #mmej_motif_pos = mmej_motif_pos[(mmej_motif_pos>(-1*small_window)) &
 #                        (mmej_motif_pos<(small_window))]
 #    mmej_motif_pos = mmej_motif_pos.tolist()
+    
     
     mmej_motif_pos = mmej_motif_pos [(mmej_motif_pos <= down_start) | (mmej_motif_pos >= up_start)]
 
@@ -132,6 +108,46 @@ def get_motifs_pos_2(ref, CHR, POS, motif, windowsize, down_start, up_start):
     else:
         return ''
 
+
+def get_motifs_pos_3(ref, CHR, POS, motif, windowsize, down_start, up_start):
+    """
+    a function that returns all positions with the motif
+    in two context created from pos to windowsize and from - windowsize to pos
+    THE POSITIONS INDICATE THE END OF THE MOTIF, DOWN AND UP, IF FABRI DOESN'T LIKE THE POS CAUSE WE GET THE ENDS, CHANGE M.END TO .M.MSTART 
+    AND M.START TO M.END AND CHANGE UP_START AND DOWN_START BEFORE CALLING THIS FUNCTION
+    """
+    context_down = ref.fetch(CHR,POS-windowsize ,POS).upper()
+    mmej_motif_pos_down = np.array([m.start() for m in re.finditer(motif, context_down, overlapped=True)])
+    context_up = ref.fetch(CHR,POS,POS+windowsize).upper()
+    mmej_motif_pos_up  = np.array([m.end() for m in re.finditer(motif, context_up, overlapped=True)])
+    
+    #i created the two contexts, one for motif in up_stream and the other for the pos in the down_stream
+    #then i converveted the POS in down_stream to relative position from the POS
+    mmej_motif_pos_down_POS_POV = - (windowsize - mmej_motif_pos_down)
+    
+    # filtering the positions according to up_start and down_start 
+    
+    
+    filtered_mmej_motif_pos_down_POS_POV = mmej_motif_pos_down_POS_POV[mmej_motif_pos_down_POS_POV <= down_start ] 
+    filtered_mmej_motif_pos_up = mmej_motif_pos_up [mmej_motif_pos_up >= up_start ] 
+    
+    #print(filtered_mmej_motif_pos_down_POS_POV)
+    #print(filtered_mmej_motif_pos_up)
+
+    # concatened it and converted to a list 
+    mmej_motif_pos_total = np.concatenate((filtered_mmej_motif_pos_down_POS_POV,filtered_mmej_motif_pos_up))
+    #print(mmej_motif_pos_total.tolist())
+ 
+ 
+
+    if len(mmej_motif_pos_total)>0:
+        out = ''
+        for i in mmej_motif_pos_total:
+            j=str(int(i))
+            out = f"{out},{j}"
+        return out[1:]
+    else:
+        return ''
 
 
 
