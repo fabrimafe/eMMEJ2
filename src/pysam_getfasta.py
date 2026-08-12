@@ -75,7 +75,9 @@ def get_motifs_pos(ref, CHR, POS, motif, windowsize):
         for i in mmej_motif_pos:
             j=str(int(i))
             out = f"{out},{j}"
-    return out[1:]
+        return out[1:]
+    else:
+        return ''
 
 
 def get_motifs_pos_2(ref, CHR, POS, motif, windowsize, down_start, up_start):
@@ -115,11 +117,12 @@ def get_motifs_pos_3(ref, CHR, POS, motif, windowsize, down_start, up_start):
     in two context created from pos to windowsize and from - windowsize to pos
     THE POSITIONS INDICATE THE END OF THE MOTIF, DOWN AND UP, IF FABRI DOESN'T LIKE THE POS CAUSE WE GET THE ENDS, CHANGE M.END TO .M.MSTART 
     AND M.START TO M.END AND CHANGE UP_START AND DOWN_START BEFORE CALLING THIS FUNCTION
+    CHANGED, NOW THE POSITIONS INDICATES THE START OF THE MOTIF
     """
     context_down = ref.fetch(CHR,POS-windowsize ,POS).upper()
-    mmej_motif_pos_down = np.array([m.start() for m in re.finditer(motif, context_down, overlapped=True)])
+    mmej_motif_pos_down = np.array([m.end() for m in re.finditer(motif, context_down, overlapped=True)])
     context_up = ref.fetch(CHR,POS,POS+windowsize).upper()
-    mmej_motif_pos_up  = np.array([m.end() for m in re.finditer(motif, context_up, overlapped=True)])
+    mmej_motif_pos_up  = np.array([m.start() for m in re.finditer(motif, context_up, overlapped=True)])
     
     #i created the two contexts, one for motif in up_stream and the other for the pos in the down_stream
     #then i converveted the POS in down_stream to relative position from the POS
@@ -160,7 +163,7 @@ def get_motifs_freqs(ref, CHR, POS, large_window, small_window, motif, indel_typ
     IT GIVES THE DISTANCE BETWEEN POS AND THE NT BEFORE THE OTHER MOTIFS
     """
     context = ref.fetch(CHR,POS-large_window ,POS+large_window).upper()
-    mmej_motif_pos = np.array([m.end() for m in
+    mmej_motif_pos = np.array([m.start() for m in
             re.finditer(motif, context, overlapped=True)], dtype=object)
 
     mmej_motif_pos = mmej_motif_pos - (len(context)/2)
