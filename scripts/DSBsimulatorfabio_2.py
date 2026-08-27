@@ -100,22 +100,75 @@ def fa2deletion(refFA,chrom,pos,min_length,max_length):
     Output has indel_length in addition to vcf-like annotation.
     """
     indel_length=random.sample(range(min_length,max_length+1),1)[0]
-    indel_seq=refFA.fetch(chrom,pos,pos+indel_length)
-#    seq_indel120bp=refFA.fetch(chr,pos-120,pos+120+indel_length)
-#    seq_ref2kbp=refFA.fetch(chr,pos-2000,pos+2000)
-#    seq_ref120bp=len(refFA.fetch(chr,pos-120,pos+120))
-    ancestral_state_vcf=refFA.fetch(chrom,pos-1,pos+indel_length)
-    derived_state_vcf=refFA.fetch(chrom,pos-1,pos)
-    ANCESTRAL_STATE_VCF=ancestral_state_vcf.upper()
-    DERIVED_STATE_VCF= derived_state_vcf.upper()
+       
+    # --- taking the source_pos of the ref in a the pos surrounding window 
+    window_start =  pos - 200      # non andare sotto 0 (inizio cromosoma)
+    window_end = pos + 200
+
+    # deleting indel_length from window_end range valido [window_start, window_end - indel_length]
+    max_start = window_end - indel_length
+    source_pos = random.randint(window_start, max_start)
+    
+    print("source_pos: " + str(source_pos))
+    # get the random seq from the random source_pos 
+    indel_seq = refFA.fetch(chrom, source_pos, source_pos + indel_length)
+
+    #print(indel_length)
+    #print(indel_seq)
+    ancestral_state_vcf=refFA.fetch(chrom,pos-1,pos+indel_length).upper()
+    derived_state_vcf=refFA.fetch(chrom,pos-1,pos).upper()
+    variant_id=str(chrom)+"_"+str(pos)
+    indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
+    if (indelNs>-3):
+        print("N found in indel")
+        return('error')
+    else:
+        return(chrom,pos,variant_id,ancestral_state_vcf,derived_state_vcf)
+        #return(chrom,pos,ancestral_state_vcf,derived_state_vcf,indel_length)
+
+def random_substitution(refFA,chrom,pos,min_length,max_length):
+    """Function to create substitutions on a fasta file giving outuput in vcf format. First and last 2kbp of chromosomes should not be used.
+    Arguments are:
+    refFA: a reference fasta file in pysam format
+    chrom: the chromosome to be mutated
+    pos: the start (0-based) position of the mutation, i.e. if you want to replace position 121 and 122 you need to set 120
+    min_length: minimum length of indel
+    max_length: minimum length of indel
+    Output has indel_length in addition to vcf-like annotation.
+    """
+    
+
+    X_length=random.sample(range(min_length,max_length+1),1)[0]
+    X_seq=indel_seq=refFA.fetch(chrom,pos,pos+X_length).upper()
+   
+    Z_length=random.sample(range(min_length,max_length+1),1)[0]
+    Y_length=random.sample(range(min_length,max_length+1),1)[0]
+    Z_seq=indel_seq=refFA.fetch(chrom,pos+X_length+Y_length,pos+X_length+Y_length+Z_length).upper()
+    print("X_length: "+str(X_length))
+    print("Y_length: "+str(Y_length))
+    print("Z_length: "+str(Z_length))
+
+    seq_window=refFA.fetch(chrom,pos,pos+100)
+    print("seq_window: "+seq_window)
+    
+    
+    #removing of the same nt at the beginning and at the end of ANC and DER, 
+    #the number of the nt removed at the start of ANC and DER is used to slide the pos forward
+    anc_slide, der_slide, NT_removed_suffix, NT_removed_prefix, total_NT_removed = sliding_vcf (X_seq,Z_seq)
+    print("anc_slide: "+anc_slide)
+    print("der_slide: "+der_slide)
+    print("NT_removed_suffix: "+ str(NT_removed_suffix))
+    print("NT_removed_prefix: " +str(NT_removed_prefix))
+    pos_slide=pos+NT_removed_prefix
+    variant_id=str(chrom)+"_"+str(pos_slide)
+    print(variant_id)
 
     indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
     if (indelNs>-3):
         print("N found in indel")
         return('error')
     else:
-        return(chrom,pos,ANCESTRAL_STATE_VCF,DERIVED_STATE_VCF)
-        #return(chrom,pos,ANCESTRAL_STATE_VCF, DERIVED_STATE_VCF,indel_length)
+        return(chrom,pos_slide,variant_id,anc_slide, der_slide)
 
 def fa2deletion_MMEJ(refFA,chrom,pos,MH_length,max_distance_MMEJ):
     """Function to create deletions arising from MMEJ on a fasta file giving outuput in vcf format. First and last 2kbp of chromosomes should not be used.
@@ -137,21 +190,20 @@ def fa2deletion_MMEJ(refFA,chrom,pos,MH_length,max_distance_MMEJ):
     else:
         indel_length=i_MH+MH_length
         indel_seq=refFA.fetch(chrom,pos,pos+i_MH+MH_length)
-        #seq_indel120bp=refFA.fetch(chr,pos-120,pos-1)+refFA.fetch(chr,pos+indel_length-1,pos+indel_length-1+120) #pos+120+indel_length)
-        #seq_ref2kbp=refFA.fetch(chr,pos-2000,pos+2000)
-        #seq_ref120bp=len(refFA.fetch(chr,pos-120,pos+120))
+        
         print("MH motif: "+MH_seq)
         #print("MH|DEL|MH:")
         #print(refFA.fetch(chrom,pos-MH_length,pos)+"|"+refFA.fetch(chrom,pos,pos+indel_length-MH_length)+"|"+refFA.fetch(chrom,pos+indel_length-MH_length,pos+indel_length) )
-        #return(chr,pos,"DEL",indel_seq,"-",indel_length,seq_indel120bp,121,seq_ref2kbp,seq_ref120bp)
-        ancestral_state_vcf=refFA.fetch(chrom,pos-1,pos+indel_length)
-        derived_state_vcf=refFA.fetch(chrom,pos-1,pos)
+        
+        ancestral_state_vcf=refFA.fetch(chrom,pos-1,pos+indel_length).upper()
+        derived_state_vcf=refFA.fetch(chrom,pos-1,pos).upper()
+        variant_id=str(chrom)+"_"+str(pos)
         indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
         if (indelNs>-3):
             print("N found in indel")
             return('error')
         else:
-            return(chrom,pos,ancestral_state_vcf,derived_state_vcf)
+            return(chrom,pos,variant_id,ancestral_state_vcf,derived_state_vcf)
             #return(chrom,pos,ancestral_state_vcf,derived_state_vcf,indel_length)
 
 def fa2insertion(refFA,chrom,pos,min_length,max_length):
@@ -165,23 +217,29 @@ def fa2insertion(refFA,chrom,pos,min_length,max_length):
     max_length: minimum length of indel
     """
     indel_length=random.sample(range(min_length,max_length+1),1)[0]
-    insertion_from=random.sample(range(500,1900),1)[0]
-    indel_seq=refFA.fetch(chrom,insertion_from,insertion_from+indel_length)
-#    seq_indel120bp=refFA.fetch(chr,pos-120,pos) + indel_seq + refFA.fetch(chr,pos+1,pos+120)
-#    seq_ref2kbp=refFA.fetch(chr,pos-2000,pos+2000)
-#    seq_ref120bp=len(refFA.fetch(chr,pos-120,pos+120))
-#    print("original context (+/-1bp): "+refFA.fetch(chrom,pos-1,pos+1)) #print around
-#    print("mutated context: "+refFA.fetch(chrom,pos-1,pos) + indel_seq + refFA.fetch(chrom,pos,pos+1)) #print insertion and around
-    ancestral_state_vcf=refFA.fetch(chrom,pos-1,pos)
-    derived_state_vcf=refFA.fetch(chrom,pos-1,pos)+indel_seq
-#    return(chr,pos,indel_seq,indel_length,seq_indel120bp,121,seq_ref2kbp,seq_ref120bp)
+    
+    # --- taking the source_pos of the ref in a the pos surrounding window 
+    window_start =  pos - 200      # non andare sotto 0 (inizio cromosoma)
+    window_end = pos + 200
+
+    # deleting indel_length from window_end range valido [window_start, window_end - indel_length]
+    max_start = window_end - indel_length
+    source_pos = random.randint(window_start, max_start)
+    
+    print("source_pos: " + str(source_pos))
+    # get the random seq from the random source_pos 
+    indel_seq = refFA.fetch(chrom, source_pos, source_pos + indel_length)
+   
+    ancestral_state_vcf=refFA.fetch(chrom,pos-1,pos).upper()
+    derived_state_vcf=(refFA.fetch(chrom,pos-1,pos)+indel_seq).upper()
+    variant_id=str(chrom)+"_"+str(pos)
+
     indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
-    print(indelNs)
     if (indelNs>-3 or indel_length==0 or ancestral_state_vcf=="N" or ancestral_state_vcf=="-" or ancestral_state_vcf=="n"):
         print("N or NULL found in indel")
         return('error')
     else:
-        return(chrom,pos,ancestral_state_vcf,derived_state_vcf)
+        return(chrom,pos,variant_id,ancestral_state_vcf,derived_state_vcf)
 
 
 def fa2insertion_snapback(refFA,chrom,pos,MH_length,SD_motif_length,max_distance,pre_SD_length=0):
@@ -242,11 +300,10 @@ def fa2insertion_snapback(refFA,chrom,pos,MH_length,SD_motif_length,max_distance
             
             indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
             #creating ANC adn DER with the nt anchor
-            ancestral_state=refFA.fetch(chrom,pos-1,pos)
-            derived_state=refFA.fetch(chrom,pos-1,pos)+indel_seq
-            
-            ancestral_state_vcf=ancestral_state.upper()
-            derived_state_vcf=derived_state.upper()
+            ancestral_state_vcf=refFA.fetch(chrom,pos-1,pos).upper()
+            derived_state_vcf=(refFA.fetch(chrom,pos-1,pos)+indel_seq).upper()
+            variant_id=str(chrom)+"_"+str(pos) 
+        
             if (indelNs>-3 or indel_length==0 or ancestral_state_vcf=="N" or ancestral_state_vcf=="-" or ancestral_state_vcf=="n"):
                 print("N found in indel")
                 return('error')
@@ -255,7 +312,7 @@ def fa2insertion_snapback(refFA,chrom,pos,MH_length,SD_motif_length,max_distance
                 #print("after insertion:")
                 #print("MH|INS|SD|snapback-loop|SDrevc|INSrevc|MHrevc")
                 print(seq_after_insertion)
-                return(chrom,pos,ancestral_state_vcf,derived_state_vcf)
+                return(chrom,pos,variant_id,ancestral_state_vcf,derived_state_vcf)
 
 
 
@@ -332,12 +389,11 @@ def fa2deletion_snapback(refFA,chrom,pos,MH_length,SD_motif_length,max_distance,
             
 
             #creating ANC adn DER with the nt anchor
-            derived_state=refFA.fetch(chrom,pos-1,pos)
-            ancestral_state=refFA.fetch(chrom,pos-1,pos)+indel_seq
+            derived_state_vcf=refFA.fetch(chrom,pos-1,pos).upper()
+            ancestral_state_vcf=(refFA.fetch(chrom,pos-1,pos)+indel_seq).upper()
             
-            ancestral_state_vcf=ancestral_state.upper()
-            derived_state_vcf=derived_state.upper()
-            
+            variant_id=str(chrom)+"_"+str(pos)
+                        
             if (indelNs>-3 or indel_length==0 or ancestral_state_vcf=="N" or ancestral_state_vcf=="-" or ancestral_state_vcf=="n"):
                 print("N found in indel")
                 return('error')
@@ -346,7 +402,7 @@ def fa2deletion_snapback(refFA,chrom,pos,MH_length,SD_motif_length,max_distance,
                 #print("after deletion")
                 #print("MH|SD|snapback-loop|SDrevc|MHrevc: ")
                 #print(seq_after_deletion)
-                return(chrom,pos,ancestral_state_vcf,derived_state_vcf)
+                return(chrom,pos,variant_id,ancestral_state_vcf,derived_state_vcf)
 
 
 
@@ -405,11 +461,11 @@ def fa2SD_direct_insertion(refFA,chrom,pos,MH_length,SD_motif_length,max_distanc
             indel_seq=refFA.fetch(chrom,pos+SD_motif_length+Y_lenght_MH_motif_length,pos+SD_motif_length+Y_lenght_MH_motif_length+Z_length)
             #indel_seq = from pos, + distance between 2° SD and 2° MH + length of MH to 2°SD from the the last nt of 2° MH
             #create ANC and DER and adding the nt anchor
-            ancestral_state=refFA.fetch(chrom,pos-1,pos)
-            derived_state=refFA.fetch(chrom,pos-1,pos)+indel_seq
-            ancestral_state_vcf=ancestral_state.upper()
-            derived_state_vcf=derived_state.upper()
-
+            ancestral_state_vcf=refFA.fetch(chrom,pos-1,pos).upper()
+            derived_state_vcf=(refFA.fetch(chrom,pos-1,pos)+indel_seq).upper()
+            
+            variant_id=str(chrom)+"_"+str(pos)
+            
             indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
             if (indelNs>-3 or indel_length==0 or ancestral_state_vcf=="N" or ancestral_state_vcf=="-" or ancestral_state_vcf=="n"):
                 print("N found in indel")
@@ -419,7 +475,7 @@ def fa2SD_direct_insertion(refFA,chrom,pos,MH_length,SD_motif_length,max_distanc
                 #print("after insertion:")
                 #print("MH|INS|SD|spacer seq between two patterns|MH|INS|SD: ")
                 #print(seq_after_insertion)
-                return(chrom,pos,ancestral_state_vcf,derived_state_vcf)
+                return(chrom,pos,variant_id,ancestral_state_vcf,derived_state_vcf)
 
 def fa2SD_direct_deletion(refFA,chrom,pos,MH_length,SD_motif_length,max_distance,X_length,pre_SD_length=0):
     """Function to create scars of a SD-direct_deletion, no matter if trans or loop-out.
@@ -486,10 +542,9 @@ def fa2SD_direct_deletion(refFA,chrom,pos,MH_length,SD_motif_length,max_distance
             #indel_seq = from pos, + distance between 1° MH and 1° SD = X_length
             seq_after_deletion=refFA.fetch(chrom,pos-MH_length,pos)+"|"+refFA.fetch(chrom,pos+X_length,pos+X_length+SD_motif_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length,pos+X_length+SD_motif_length+i_MH)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+i_MH,pos+X_length+SD_motif_length+i_MH+MH_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+i_MH+MH_length,pos+X_length+SD_motif_length+i_MH+MH_length+SD_motif_length)
             #creating ANC and DER and adding the nt anchor
-            derived_state=refFA.fetch(chrom,pos-1,pos)
-            derived_state_vcf=derived_state.upper()
-            ancestral_state=refFA.fetch(chrom,pos-1,pos)+indel_seq
-            ancestral_state_vcf=ancestral_state.upper()
+            derived_state_vcf=refFA.fetch(chrom,pos-1,pos).upper()
+            ancestral_state_vcf=(refFA.fetch(chrom,pos-1,pos)+indel_seq).upper()
+            variant_id=str(chrom)+"_"+str(pos)
             indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
             if (indelNs>-3 or indel_length==0 or ancestral_state_vcf=="N" or ancestral_state_vcf=="-" or ancestral_state_vcf=="n"):
                 print("N found in indel")
@@ -499,7 +554,7 @@ def fa2SD_direct_deletion(refFA,chrom,pos,MH_length,SD_motif_length,max_distance
                 #print("after deletion:")
                 #print("MH|SD|spacer seq between two patterns|MH|SD: ")
                 #print(seq_after_deletion)
-                return(chrom,pos,ancestral_state_vcf,derived_state_vcf)
+                return(chrom,pos,variant_id,ancestral_state_vcf,derived_state_vcf)
 
 def fa2SD_direct_substitution(refFA,chrom,pos,MH_length,SD_motif_length,max_distance,X_length): 
     """Function to create scars of a SD-direct_substitution, no matter if trans or loop-out.
@@ -541,7 +596,6 @@ def fa2SD_direct_substitution(refFA,chrom,pos,MH_length,SD_motif_length,max_dist
         print("no MH possible in range")
         return("error")
     else:
-        print(Y_length)
         #here i_MH is the pos of the last nt of 2° SD from 2° MH
         seq_window=refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length+MH_length,pos+max_distance)
         #up here seq_window is from 2°MH to max distance, it's used to find 2°SD 
@@ -553,7 +607,6 @@ def fa2SD_direct_substitution(refFA,chrom,pos,MH_length,SD_motif_length,max_dist
             return("error") 
 
         else:
-            print(Z_length)
             #indel_length=Z_length = distance from 2°MH to 2° SD H 
             indel_length=Z_length
             
@@ -577,36 +630,41 @@ def fa2SD_direct_substitution(refFA,chrom,pos,MH_length,SD_motif_length,max_dist
             #removing of the same nt at the beginning and at the end of ANC and DER, 
             #the number of the nt removed at the start of ANC and DER is used to slide the pos forward
             anc_slide, der_slide, NT_removed_suffix, NT_removed_prefix, total_NT_removed = sliding_vcf (X_ANC_seq,indel_seq)
-            #print("anc_slide: "+anc_slide)
-            #print("der_slide: "+der_slide)
+            print("anc_slide: "+anc_slide)
+            print("der_slide: "+der_slide)
             #ANC and DER slided
-            ANC_SLIDE=anc_slide.upper()
-            DER_SLIDE=der_slide.upper()
-            #print("NT_removed_suffix :"+str(NT_removed_suffix))
-            #print("number of pos slided :"+str(NT_removed_prefix))
-            #print(total_NT_removed)
-            print("pos: "+str(pos))
-            #pos_slided is the pos + the number of the removed prefix
-            pos_slided = pos+NT_removed_prefix
-            #print("pos_slided: "+ str(pos_slided))
-
-            #i put the nt anchor first cause the vcf() it's not used anymor it's not used anymoree
-            derived_state_vcf=nt_anchor.upper()+der.upper()
-            ancestral_state_vcf=nt_anchor.upper()+anc.upper()
-
-            indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
-            if (indelNs>-3 or indel_length==0 or ancestral_state_vcf=="N" or ancestral_state_vcf=="-" or ancestral_state_vcf=="n"):
-                print("N found in indel")
+            if anc_slide == der_slide:
+                print("ANC and DER are equal")
                 return('error')
             else:
-                #print("MH|X|SD|spacer seq between two patterns|MH|Z|SD: ")
-                #print(indel_seq_annotated)
-                #print("after substitution:")
-                #print("MH|SUB'Z'|SD|spacer seq between two patterns|MH|Z|SD: ")
-                #print(seq_after_deletion)
-                #chrom,pos,ref,alt
-                #return(chrom,pos,ancestral_state_vcf,derived_state_vcf)
-                return(chrom, pos_slided, ANC_SLIDE, DER_SLIDE)
+                print("NT_removed_suffix :"+str(NT_removed_suffix))
+                print("number of pos slided :"+str(NT_removed_prefix))
+                print(total_NT_removed)
+                print("pos: "+str(pos))
+                
+                #pos_slided is the pos + the number of the removed prefix
+                pos_slided = pos+NT_removed_prefix
+                print("pos_slided: "+ str(pos_slided))
+                variant_id=str(chrom)+"_"+str(pos_slided)
+                
+                #i put the nt anchor first cause the vcf() it's not used anymor it's not used anymoree
+                
+                derived_state_vcf=nt_anchor.upper()+der.upper()
+                ancestral_state_vcf=nt_anchor.upper()+anc.upper()
+
+                indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
+                if (indelNs>-3 or indel_length==0 or ancestral_state_vcf=="N" or ancestral_state_vcf=="-" or ancestral_state_vcf=="n"):
+                    print("N found in indel")
+                    return('error')
+                else:
+                    print("MH|X|SD|spacer seq between two patterns|MH|Z|SD: ")
+                    print(indel_seq_annotated)
+                    print("after substitution:")
+                    print("MH|SUB'Z'|SD|spacer seq between two patterns|MH|Z|SD: ")
+                    print(seq_after_deletion)
+                    #chrom,pos,ref,alt
+                    #return(chrom,pos,ancestral_state_vcf,derived_state_vcf)
+                    return(chrom,pos_slided,variant_id,anc_slide, der_slide)
 
 
 def fa2SD_snapback_substitution(refFA,chrom,pos,MH_length,SD_motif_length,max_distance,X_length): 
@@ -694,36 +752,40 @@ def fa2SD_snapback_substitution(refFA,chrom,pos,MH_length,SD_motif_length,max_di
             anc_slide, der_slide, NT_removed_suffix, NT_removed_prefix, total_NT_removed = sliding_vcf (X_ANC_seq,indel_seq)
             print("anc_slide: "+anc_slide)
             print("der_slide: "+der_slide)
-            #upper ANC and DER
-            ANC_SLIDE=anc_slide.upper()
-            DER_SLIDE=der_slide.upper()
-            print("NT_removed_suffix :"+str(NT_removed_suffix))
-            print("number of pos slided :"+str(NT_removed_prefix))
-            #print(total_NT_removed)
-            print("pos: "+str(pos))
-            #pos_slided = pos + number of removed prefix between ANC and DER
-            pos_slided = pos+NT_removed_prefix
-            print("pos_slided: "+ str(pos_slided))
-            #i put the nt anchor first cause the vcf
-            derived_state_vcf=nt_anchor.upper()+indel_seq.upper()# i put the anchor for the happyness of vcf
-            #ancestral_state_vcf=nt_anchor.upper()+X_ANC_seq.upper()
-
-            ancestral_state_vcf=nt_anchor.upper()+anc.upper()
-            derived_state_vcf=nt_anchor.upper()+der.upper()
-
-            indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
-            if (indelNs>-3 or indel_length==0 or ancestral_state_vcf=="N" or ancestral_state_vcf=="-" or ancestral_state_vcf=="n"):
-                print("N found in indel")
-                return('error')
+            if anc_slide == der_slide:
+                print("ANC and DER are equal")
+                return("erroe")
             else:
-                print("MH|X|SD|spacer seq between two patterns|SDrevc|Zrevc|MHrevc: ")
-                print(indel_seq_annotated)
-                print("after substitution:")
-                print("MH|SUB Z|SD|spacer seq between two patterns|MHrevc|Zrevc|SDrevc: ")
-                print(seq_after_substitution)
-                #chrom,pos,ref,alt
-                return(chrom, pos_slided, ANC_SLIDE, DER_SLIDE)
-                #return(chrom,pos,ancestral_state_vcf,derived_state_vcf)
+
+                print("NT_removed_suffix :"+str(NT_removed_suffix))
+                print("number of pos slided :"+str(NT_removed_prefix))
+                #print(total_NT_removed)
+                print("pos: "+str(pos))
+                #pos_slided = pos + number of removed prefix between ANC and DER
+                pos_slided = pos+NT_removed_prefix
+                print("pos_slided: "+ str(pos_slided))
+            
+                #i put the nt anchor first cause the vcf
+                derived_state_vcf=nt_anchor.upper()+indel_seq.upper()# i put the anchor for the happyness of vcf
+            
+                #ancestral_state_vcf=nt_anchor.upper()+X_ANC_seq.upper()
+                variant_id=str(chrom)+"_"+str(pos_slided)
+                ancestral_state_vcf=nt_anchor.upper()+anc.upper()
+                derived_state_vcf=nt_anchor.upper()+der.upper()
+
+                indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
+                if (indelNs>-3 or indel_length==0 or ancestral_state_vcf=="N" or ancestral_state_vcf=="-" or ancestral_state_vcf=="n"):
+                    print("N found in indel")
+                    return('error')
+                else:
+                    print("MH|X|SD|spacer seq between two patterns|SDrevc|Zrevc|MHrevc: ")
+                    print(indel_seq_annotated)
+                    print("after substitution:")
+                    print("MH|SUB Z|SD|spacer seq between two patterns|MHrevc|Zrevc|SDrevc: ")
+                    print(seq_after_substitution)
+                    #chrom,pos,ref,alt
+                    return(chrom, pos_slided,variant_id,anc_slide,der_slide)
+                    #return(chrom,pos,ancestral_state_vcf,derived_state_vcf)
 
 
 
@@ -769,8 +831,10 @@ while len(myvcf)<nsims:
         res=fa2insertion_snapback(refFA,xchr,xpos,MH_length=xMHlength,SD_motif_length=xSDlength,max_distance=xmaxdistance)
     elif xmechanism=="SD_inverted_deletion":
         res=fa2deletion_snapback (refFA,xchr,xpos,MH_length=xMHlength,SD_motif_length=xSDlength,max_distance=xmaxdistance,X_length=xX_length)
-    elif xmechanism=="insertion":
+    elif xmechanism=="random_insertion":
         res=fa2insertion(refFA,xchr,xpos,xMHlength,xmaxdistance)
+    elif xmechanism=="random_substitution":
+        res=random_substitution(refFA,xchr,xpos,xMHlength,xmaxdistance)
     elif xmechanism=="SD_direct_insertion":
         res=fa2SD_direct_insertion (refFA,xchr,xpos,xMHlength,xSDlength,xmaxdistance)
     elif xmechanism=="SD_direct_deletion":
@@ -795,7 +859,7 @@ while len(myvcf)<nsims:
         continue    # questo era il motivo per cui andava in loop
 
 print("N of attempted simulations:" + str(counter_sims))
-myvcf = pd.DataFrame(myvcf, columns=['#CHR', 'POS','REF','ALT'])
+myvcf = pd.DataFrame(myvcf, columns=['#CHR', 'POS','variant_id','REF','ALT'])
 #myvcf = myvcf[['#CHR', 'POS','REF','ALT']]
 if outfile!=None:
     myvcf.to_csv(outfile, sep="\t",index=None)

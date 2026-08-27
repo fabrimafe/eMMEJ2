@@ -61,24 +61,17 @@ class emMEJrealignment:
             self.indel_position = self.windowsize
         if (self.indel_type == 'SUB'):
             print("sub")
-            if len(ANC) > len (DER):
+            if len(ANC) >= len (DER):
                 self.indel_length = len(ANC) - len (DER)
                 self.INDEL = DER
                 self.ANC = ANC
                 self.DER = DER
-                #self.INDEL = DER[1:] # self.INDEL = self.DER 
-                #self.ANC = ANC[1:] #delete the anchor
-                #self.DER = DER[1:]
-                
+                                
             else: 
                 self.indel_length = len(DER) - len(ANC)
                 self.INDEL = DER
                 self.ANC = ANC
-                self.DER = DER
-                #self.INDEL = DER[1:] # self.INDEL = self.DER
-                #self.ANC = ANC[1:] #delete the anchor
-                #self.DER = DER[1:]
-        
+                self.DER = DER       
                 
             self.windowsize = windowsize
         print(f"DEBUG: indel_type = {repr(self.indel_type)}")
@@ -121,7 +114,7 @@ class emMEJrealignment:
 
         #SUBSTITUTION
         if (self.indel_type == 'SUB'):
-            if len(ANC) > len (DER):
+            if len(ANC) >= len (DER):
                 self.mutant_sequence = get_mutant_context(
                         reference_contex=self.ref_seq,
                         alt=self.INDEL,

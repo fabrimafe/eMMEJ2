@@ -77,15 +77,16 @@ MH_lengths=args['MH_lengths'].split(",")
 MH_lengths = [int(x) for x in MH_lengths]
 
 path_to_data = args["vcf"]
-Dtypes={'CHR':str, 'POS':int, 'REF':str, 'ALT':str, 'ANCESTRAL': str}
-col_names = ['CHR', 'POS', 'REF', 'ALT', 'ANCESTRAL']
+Dtypes={'CHR':str, 'POS':int,'variant_id':str, 'REF':str, 'ALT':str, 'ANCESTRAL': str}
+col_names = ['CHR', 'POS','variant_id', 'REF', 'ALT', 'ANCESTRAL']
 
 if not args['ancestral']: col_names.remove('ANCESTRAL')
 df = pd.read_csv(path_to_data, sep="\t", header=None, dtype=Dtypes, 
                     names=col_names, comment='#') 
 
 # filtering out cases in which length of REF and ALT are equal
-df = df.loc[(df['REF'].str.len() != df['ALT'].str.len()), :]
+
+#df = df.loc[(df['REF'].str.len() != df['ALT'].str.len()), :]
 if args['verbose']: print(f"Input data dimentions:{df.shape}")
 if args['ancestral']: set_ancestral_state_indel(df=df)
 else: df.rename(columns={'REF': 'ANC', 'ALT': 'DER'}, inplace=True)
@@ -101,6 +102,7 @@ problematic_nuc.remove('A')
 problematic_nuc.remove('C')
 problematic_nuc.remove('G')
 problematic_nuc.remove('T')
+
 
 df['context_contains_N'] = df.apply(lambda row: any(c in str(refFA.fetch(row['CHR'],
             row['POS']-1000 ,row['POS']+1000)).upper() for c in problematic_nuc), axis=1)
@@ -145,10 +147,11 @@ df = df[(df['ANC'] == orig_ANC) & (df['DER'] == orig_DER)]
 
 # -------------------------- PREPARING THE DATA TO MOTIF FINDING STEP -------------------------
 # making sure that there are no SNPs in the data
-df = df.loc[(df.loc[:,'DER'].str.len() != df.loc[:,'ANC'].str.len()),:]
+#df = df.loc[(df.loc[:,'DER'].str.len() != df.loc[:,'ANC'].str.len()),:]
+
 
 print(df[['DER', 'ANC']])
-# Removing duplicates
+# Removing duplicates --------------------------
 df.drop_duplicates(subset=['CHR','POS','ANC',"DER"],inplace=True)
 df.reset_index(drop=True,inplace=True)
 print(df[['DER', 'ANC']])  
@@ -404,6 +407,10 @@ col_to_save = ['CHR', 'POS', 'original_pos', 'variant_id', 'direction', #'REF','
             'pol_slippage_repeatsDownstream', 'pol_slip_pos'] # 'pol_slippage_times']
 
 if args["include_context"]: col_to_save = col_to_save + ['ref_genome_context', 'mutant_sequence']
+
+for c in col_to_save: #se una colonna non viene creato, come nel caso di plo_slip per le sub allora è falsa
+    if c not in df.columns:
+        df[c] = False
 
 df.loc[:,'del_mmej'].fillna(value=False, inplace=True)
 df.loc[:,'SD_inverted_insertion'].fillna(value=False, inplace=True)
