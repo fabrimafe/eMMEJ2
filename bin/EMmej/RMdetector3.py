@@ -60,6 +60,9 @@ all_args.add_argument("-vr", "--verbose", required=False,
 all_args.add_argument("-ex", "--extension", required=False,
         action='store_true',default=False,
       help="a flag to turn on the extension of MH and SD")
+all_args.add_argument("-a", "--alignment", required=False,
+        action='store_true',default=False,
+      help="a flag to turn on the realignment module")
 
 args = vars(all_args.parse_args())
 
@@ -122,7 +125,7 @@ SUB = (
         (df['DER'].str.len() >= 1) &
         (df['ANC'].str[0] != df['DER'].str[0])).any()
 
-if not args['CRISPR'] and not SUB:
+if args ['alignment'] and not args['CRISPR'] and not SUB:
     df=df.apply(lambda row : vcf2realignedvcfs_pairwise2(refFA,row['CHR'],row['POS'], row['ANC'],row['DER'],150), axis = 1)
     df=flatten_2list(df.tolist())
     df=pd.DataFrame(df,columns = ['CHR','POS','ANC',"DER","original_pos"])
