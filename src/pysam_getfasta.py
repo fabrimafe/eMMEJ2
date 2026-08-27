@@ -183,7 +183,4 @@ def get_motifs_freqs(ref, CHR, POS, large_window, small_window, motif, indel_typ
     else:
         return np.array([np.nan, motif_freq_small, motif_freq_large], dtype = object) #np.array
 
-"""
-df DSB_generator(ref, CHR, POS, window_length,indel_type):
-    #mo vediamo
-"""
+

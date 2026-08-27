@@ -83,6 +83,57 @@ def flatten_2list(list_of_lists):
         for item2 in item:
             flat_list.append(item2)
     return(flat_list)
+
+
+def DSB_background_generator(refFA, chrom, pos, ref, alt, indel_type, max_distance):
+    """
+    creating 'background' variants shifting the pos upstream and downsteam 
+
+
+    Parametri:
+        refFA        : pysam.FastaFile del genoma di riferimento
+        chrom        : cromosoma (str)
+        pos          : posizione originale (1-based, VCF)
+        ref          : REF originale (stringa, con anchor)
+        alt          : ALT originale (stringa, con anchor)
+        indel_type   : 'DEL' o 'INS'
+        max_distance : numero massimo di basi di shift (int)
+
+    Ritorna:
+        Lista di tuple (chrom, new_pos,new_variant_id, new_anc, new_der,pos,indel_type)
+    """
+    results = []
+    ref_len = len(ref)
+    alt_len = len(alt)
+
+    for n in range(0, max_distance + 1):
+        for direction in (-1, 1):          # -1 = sinistra, +1 = destra
+            new_pos = pos + direction * n
+            new_variant_id = f"{chrom}_{new_pos}"
+            
+            if indel_type == 'DEL':
+                # ri-pesco l'intera regione (anchor + basi delete) dal riferimento
+                # pysam.fetch è 0-based half-open -> new_pos-1 come start
+                new_anc = (refFA.fetch(chrom, new_pos - 1, new_pos - 1 + ref_len)).upper()
+                new_der = new_anc[0].upper()        # solo l'anchor
+
+            elif indel_type == 'INS':
+                # dalle inserzione anc è una nuova ancora che dipende dalla nuova pos 
+                new_anc = (refFA.fetch(chrom, new_pos - 1, new_pos)).upper()
+                inserted_seq = alt[1:]      # la parte inserita resta invariata
+                new_der = (new_anc + inserted_seq).upper() #e poi le sommo dando vita a new_der
+            elif indel_type == 'SUB':
+                new_anc = (refFA.fetch(chrom,new_pos, + ref_len)).upper() #come nelle delezioni cambia in base alla new_pos
+                new_der=alt.upper() #e come nelle ins rimane invariata ma senza ancora sta volta
+
+            else:
+                raise ValueError(f"indel_type non riconosciuto: {indel_type}")
+
+            results.append((chrom, new_pos,new_variant_id, new_anc, new_der,pos,indel_type))
+
+    return results
+
+
 def vcf2realignedvcfs(refFA,chrom,pos,REF,ALT,length_around):
     """perform indel realignment for a single variant in vcf format
     listing all possible equally-best alignments. Then it applies

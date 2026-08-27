@@ -49,20 +49,29 @@ all_args.add_argument("-mhl", "--MH_lengths", required=False ,default=2,
       help="a flag that specify the specific MH length that one wants to analyze, default is all MH lengths")
 all_args.add_argument("-cr", "--CRISPR", required=False, action='store_true',default=False, 
       help="a flag to indicate if the algorithm performes on CRISPR data")
+
 all_args.add_argument("-anc", "--ancestral", required=False, action='store_true',default=False, 
       help="a flag to indicate whether an ancestral state is available or not")
+
 all_args.add_argument("-ic", "--include_context", required=False,  default=False, 
       action='store_true',
       help="a flag to indicate whether to include context in output or not")
+
 all_args.add_argument("-vr", "--verbose", required=False, 
         action='store_true',default=False, 
       help="a flag to turn on verbose mode")
+
 all_args.add_argument("-ex", "--extension", required=False,
         action='store_true',default=False,
       help="a flag to turn on the extension of MH and SD")
+
 all_args.add_argument("-a", "--alignment", required=False,
-        action='store_true',default=False,
+      action='store_true',default=False,
       help="a flag to turn on the realignment module")
+
+all_args.add_argument("-m", "--maxdistance", type=int ,default=None,
+        help="a flag that specify the max number of shifts in the DSB_generator_background")
+
 
 args = vars(all_args.parse_args())
 
@@ -125,6 +134,8 @@ SUB = (
         (df['DER'].str.len() >= 1) &
         (df['ANC'].str[0] != df['DER'].str[0])).any()
 
+
+
 if args ['alignment'] and not args['CRISPR'] and not SUB:
     df=df.apply(lambda row : vcf2realignedvcfs_pairwise2(refFA,row['CHR'],row['POS'], row['ANC'],row['DER'],150), axis = 1)
     df=flatten_2list(df.tolist())
@@ -132,6 +143,7 @@ if args ['alignment'] and not args['CRISPR'] and not SUB:
     df.loc[:, 'POS'] = df.loc[:, 'POS'] + 1
 else:
     df['original_pos'] = df['POS']
+
 
     
 """
@@ -153,11 +165,11 @@ df = df[(df['ANC'] == orig_ANC) & (df['DER'] == orig_DER)]
 #df = df.loc[(df.loc[:,'DER'].str.len() != df.loc[:,'ANC'].str.len()),:]
 
 
-print(df[['DER', 'ANC']])
+
 # Removing duplicates --------------------------
 df.drop_duplicates(subset=['CHR','POS','ANC',"DER"],inplace=True)
 df.reset_index(drop=True,inplace=True)
-print(df[['DER', 'ANC']])  
+  
 # getting rid of the 'N' in ref and NaN in DER
 if args['verbose']:
     print(
@@ -180,7 +192,7 @@ else:
 df.loc[:, 'DER'] = df.loc[:, 'DER'].str.upper()
 df.loc[:, 'ANC'] = df.loc[:, 'ANC'].str.upper()
 
-
+print(df.to_string())
 # defining indel type and length
 df.loc[:, 'indel_type'] = np.nan
 df.loc[
@@ -211,6 +223,20 @@ df.loc[:, 'ref_len'] = df.loc[:,'ANC'].str.len()
 df.loc[:, 'alt_len'] = df.loc[:,'DER'].str.len()
 df.loc[(df['indel_type'] == 'INS'), 'indel_len'] = df.loc[:, 'alt_len'] - df.loc[:, 'ref_len']
 df.loc[(df['indel_type'] == 'DEL'), 'indel_len'] = df.loc[:, 'ref_len'] - df.loc[:, 'alt_len']
+
+maxdistance = args['maxdistance']
+print(df.to_string())
+if args ['maxdistance'] is not None:
+    df = df.apply(lambda row: DSB_background_generator(refFA, row['CHR'], row['POS'],
+                                                    row['ANC'], row['DER'],
+                                                    row['indel_type'], maxdistance),
+                   axis=1)
+    df = flatten_2list(df.tolist())
+    df = pd.DataFrame(df, columns=['CHR', 'POS','variant_id', 'ANC', 'DER','original_pos','indel_type'])
+
+df = df.drop_duplicates(subset='variant_id', keep='first')
+df = df.reset_index(drop=True)
+print(df.to_string())
 
 # --------------- Repair mechanism detection ---------------------------------------------
 
