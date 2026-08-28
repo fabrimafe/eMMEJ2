@@ -138,28 +138,42 @@ def DSB_background_generator(refFA, chrom, pos, ref, alt, indel_type, max_distan
     return results
 
 def de_collapse(refFA, chrom, pos, ref, alt,de_collapse_distance):
-    
-    results = []
+    """
+    de_collapse extend to the left and to the right ANC and DER, it adds a number of nucleotides that can't be > de_collapse_distance
+    if de_collapse_distance = 2, we will have:
+    0.ANC(OR DER).0
+    0.ANC(OR DER).1
+    0.ANC(OR DER).2
+    2.ANC(OR DER).0
+    2.ANC(OR DER).1
+    1.ANC(OR DER).0
+
+    """
+
+
+    results = [] #apro la lista
     new_variant_id = f"{chrom}_{pos}"
     
     ref_len = len(ref)
     anc = ref
     der = alt
+
+    for dist in range(0, de_collapse_distance + 1):
+           for left in range(0, dist + 1):
+                
+                right = dist - left 
+                
+                left_ex = (refFA.fetch(chrom, pos - 1 - left, pos - 1)).upper()
+                right_ex = (refFA.fetch(chrom, pos - 1 + ref_len, pos - 1 + ref_len + right)).upper()
+
+                new_anc = left_ex + anc + right_ex
+                new_der = left_ex + der + right_ex
+                new_pos = pos - left
+
+                results.append((chrom, new_pos, new_variant_id, new_anc, new_der, pos))
     
-    for i in range(0, de_collapse_distance+1):
-        left_flank = (refFA.fetch(chrom, pos - 1 - i, pos - 1)).upper()
-        right_flank = (refFA.fetch(chrom, pos - 1 + ref_len, pos - 1 + ref_len + i)).upper()
-
-        new_anc = left_flank + anc + right_flank
-        new_der = left_flank + der + right_flank
-        new_pos = pos - i
-
-        results.append((chrom, new_pos, new_variant_id, new_anc, new_der, pos))
-
     return results
-
-
-
+    
 
 
 
@@ -167,7 +181,7 @@ def vcf2realignedvcfs(refFA,chrom,pos,REF,ALT,length_around):
     """perform indel realignment for a single variant in vcf format
     listing all possible equally-best alignments. Then it applies
     alignments2vcf for each of these, returning all possible
-    indel calls for a single variant. Output in vcf format + an identifier
+    indcalls for a single variant. Output in vcf format + an identifier
     tag that indicates original_position.index, where the index specifies
     the index of the alignment of that position (useful when a
     single indel can be split in several sub-indels)"""
