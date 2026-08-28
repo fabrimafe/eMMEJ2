@@ -72,7 +72,8 @@ all_args.add_argument("-a", "--alignment", required=False,
 all_args.add_argument("-m", "--maxdistance", type=int ,default=None,
         help="a flag that specify the max number of shifts in the DSB_generator_background")
 
-
+all_args.add_argument("-d", "--de_collapse_distance", type=int ,default=None,
+        help="a flag that specify the max number of nt added to the right ot to the left of ANC and DER")
 args = vars(all_args.parse_args())
 
 # ------------------ PREPARING DATA ------------------------------------
@@ -193,6 +194,17 @@ df.loc[:, 'DER'] = df.loc[:, 'DER'].str.upper()
 df.loc[:, 'ANC'] = df.loc[:, 'ANC'].str.upper()
 
 print(df.to_string())
+
+de_collapse_distance= args['de_collapse_distance']
+if args ['de_collapse_distance'] is not None:
+    df = df.apply(lambda row: de_collapse(refFA, row['CHR'], row['POS'],
+                                                    row['ANC'], row['DER'],
+                                                    de_collapse_distance),
+                   axis=1)
+    df = flatten_2list(df.tolist())
+    df = pd.DataFrame(df, columns=['CHR', 'POS','variant_id', 'ANC', 'DER','original_pos'])
+
+print(df.to_string())
 # defining indel type and length
 df.loc[:, 'indel_type'] = np.nan
 df.loc[
@@ -209,20 +221,22 @@ df.loc[
         (df['ANC'] == df['DER'].str[0]),
         'indel_type'] = 'INS'
 
-#df.loc[(df['ANC'].str.len() < df['DER'].str.len()), 'indel_type'] = 'INS'
-
+#se non è ins o del allora è sub 
+df.loc[df['indel_type'].isna(), 'indel_type'] = 'SUB'
+"""
 df.loc[
         (df['ANC'].str.len() >= 1) &
         (df['DER'].str.len() >= 1) &
         (df['ANC'].str[0] != df['DER'].str[0]),
         'indel_type'] = 'SUB'
-
+"""
 
 df.loc[:, 'indel_len'] = np.nan
 df.loc[:, 'ref_len'] = df.loc[:,'ANC'].str.len()
 df.loc[:, 'alt_len'] = df.loc[:,'DER'].str.len()
 df.loc[(df['indel_type'] == 'INS'), 'indel_len'] = df.loc[:, 'alt_len'] - df.loc[:, 'ref_len']
 df.loc[(df['indel_type'] == 'DEL'), 'indel_len'] = df.loc[:, 'ref_len'] - df.loc[:, 'alt_len']
+df.loc[df['indel_type'] == 'SUB', 'indel_len'] = abs(df['ref_len'] - df['alt_len'])
 
 maxdistance = args['maxdistance']
 print(df.to_string())
@@ -234,9 +248,15 @@ if args ['maxdistance'] is not None:
     df = flatten_2list(df.tolist())
     df = pd.DataFrame(df, columns=['CHR', 'POS','variant_id', 'ANC', 'DER','original_pos','indel_type'])
 
-df = df.drop_duplicates(subset='variant_id', keep='first')
+#remove duplicates for the same pos, anc and der
+df = df.drop_duplicates(subset=['POS','ANC','DER'], keep='first')
 df = df.reset_index(drop=True)
 print(df.to_string())
+
+indel_position = args['windowsize']
+
+
+
 
 # --------------- Repair mechanism detection ---------------------------------------------
 
@@ -392,8 +412,8 @@ if 'SD_direct_insertion' in df.columns:
     df['SD_DI_repeat_pat_len'] = np.nan
 df.loc[df['SD_direct_insertion']==True,'SD_DI_repeat_pat_len'] = df.loc[df['SD_direct_insertion']==True, 'SD_DI_repeat_pat'].str.len()
 
-col_to_save = ['CHR', 'POS', 'original_pos', 'variant_id', 'direction', #'REF','ALT',
-            'ANC','DER', 'indel_type', 'indel_len',  
+col_to_save = ['CHR', 'POS','variant_id', #'REF','ALT',
+            'ANC','DER','original_pos','direction', 'indel_type', 'indel_len',  
             # deletions
             'del_mmej', 'del_mmejl','del_mmej_cand', 'del_mmej_marked_on_ref', 'del_mmej_marked',
             'del_last_dimer','del_mmej_cand_len',

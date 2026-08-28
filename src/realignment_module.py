@@ -6,9 +6,13 @@ import Bio
 from Bio import Align
 import numpy as np
 from Bio import pairwise2
+import sys
 
+sys.path.append("/home/fabio/git/eMMEJ2/scripts")
+from sliding_vcf import sliding_vcf
 #import argparse
 
+#from /home/fabio/git/eMMEJ2/scripts/DSBsimulatorfabio_2.py import sliding_vcf 
 
 def alignments2vcf(xalignment, chrom='CHR', pos=0, starting_base="N"):
     """convert a single alignment to vcf-like format, adding the
@@ -90,17 +94,16 @@ def DSB_background_generator(refFA, chrom, pos, ref, alt, indel_type, max_distan
     creating 'background' variants shifting the pos upstream and downsteam 
 
 
-    Parametri:
-        refFA        : pysam.FastaFile del genoma di riferimento
-        chrom        : cromosoma (str)
-        pos          : posizione originale (1-based, VCF)
-        ref          : REF originale (stringa, con anchor)
-        alt          : ALT originale (stringa, con anchor)
-        indel_type   : 'DEL' o 'INS'
-        max_distance : numero massimo di basi di shift (int)
+        refFA - genoma di riferimento
+        chrom - cromosoma (str)
+        pos -  posizione originale (1-based, VCF)
+        ref - REF originale (stringa, con anchor) senza ancora nelle sub
+        alt - ALT originale (stringa, con anchor) senza ancora nelle sub
+        indel_type - 'DEL' o 'INS' o 'SUB'
+        max_distance - numero massimo di basi di shift (int)
 
-    Ritorna:
-        Lista di tuple (chrom, new_pos,new_variant_id, new_anc, new_der,pos,indel_type)
+    Return:
+    chrom, new_pos,variant_id, new_anc, new_der,pos,indel_type
     """
     results = []
     ref_len = len(ref)
@@ -109,7 +112,7 @@ def DSB_background_generator(refFA, chrom, pos, ref, alt, indel_type, max_distan
     for n in range(0, max_distance + 1):
         for direction in (-1, 1):          # -1 = sinistra, +1 = destra
             new_pos = pos + direction * n
-            new_variant_id = f"{chrom}_{new_pos}"
+            new_variant_id = f"{chrom}_{pos}"
             
             if indel_type == 'DEL':
                 # ri-pesco l'intera regione (anchor + basi delete) dal riferimento
@@ -123,15 +126,41 @@ def DSB_background_generator(refFA, chrom, pos, ref, alt, indel_type, max_distan
                 inserted_seq = alt[1:]      # la parte inserita resta invariata
                 new_der = (new_anc + inserted_seq).upper() #e poi le sommo dando vita a new_der
             elif indel_type == 'SUB':
-                new_anc = (refFA.fetch(chrom,new_pos, + ref_len)).upper() #come nelle delezioni cambia in base alla new_pos
-                new_der=alt.upper() #e come nelle ins rimane invariata ma senza ancora sta volta
-
+                anc = (refFA.fetch(chrom,new_pos, new_pos + ref_len)).upper() #come nelle delezioni cambia in base alla new_pos
+                der=alt.upper() #e come nelle ins rimane invariata ma senza ancora sta volta
+                new_anc,new_der,NT_removed_suffix, NT_removed_prefix, total_NT_removed = sliding_vcf (anc,der)
+                new_pos=new_pos+NT_removed_prefix
             else:
                 raise ValueError(f"indel_type non riconosciuto: {indel_type}")
 
             results.append((chrom, new_pos,new_variant_id, new_anc, new_der,pos,indel_type))
 
     return results
+
+def de_collapse(refFA, chrom, pos, ref, alt,de_collapse_distance):
+    
+    results = []
+    new_variant_id = f"{chrom}_{pos}"
+    
+    ref_len = len(ref)
+    anc = ref
+    der = alt
+    
+    for i in range(0, de_collapse_distance+1):
+        left_flank = (refFA.fetch(chrom, pos - 1 - i, pos - 1)).upper()
+        right_flank = (refFA.fetch(chrom, pos - 1 + ref_len, pos - 1 + ref_len + i)).upper()
+
+        new_anc = left_flank + anc + right_flank
+        new_der = left_flank + der + right_flank
+        new_pos = pos - i
+
+        results.append((chrom, new_pos, new_variant_id, new_anc, new_der, pos))
+
+    return results
+
+
+
+
 
 
 def vcf2realignedvcfs(refFA,chrom,pos,REF,ALT,length_around):

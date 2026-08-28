@@ -625,7 +625,7 @@ def fa2SD_direct_substitution(refFA,chrom,pos,MH_length,SD_motif_length,max_dist
             #creating an useful print in the log about the genomic context after the mechanism
             seq_after_deletion=refFA.fetch(chrom,pos-MH_length,pos)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length+MH_length,pos+X_length+SD_motif_length+Y_length+MH_length+Z_length)+"|"+refFA.fetch(chrom,pos+X_length,pos+X_length+SD_motif_length) +"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length,pos+X_length+SD_motif_length+Y_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length,pos+X_length+SD_motif_length+Y_length+MH_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length+MH_length,pos+X_length+SD_motif_length+Y_length+MH_length+Z_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length+MH_length+Z_length,pos+X_length+SD_motif_length+Y_length+MH_length+Z_length++SD_motif_length)
             
-            anc, der = normalize_vcf(X_ANC_seq,indel_seq)
+            #anc, der = normalize_vcf(X_ANC_seq,indel_seq)
             
             #removing of the same nt at the beginning and at the end of ANC and DER, 
             #the number of the nt removed at the start of ANC and DER is used to slide the pos forward
@@ -649,8 +649,8 @@ def fa2SD_direct_substitution(refFA,chrom,pos,MH_length,SD_motif_length,max_dist
                 
                 #i put the nt anchor first cause the vcf() it's not used anymor it's not used anymoree
                 
-                derived_state_vcf=nt_anchor.upper()+der.upper()
-                ancestral_state_vcf=nt_anchor.upper()+anc.upper()
+                #derived_state_vcf=nt_anchor.upper()+der.upper()
+                #ancestral_state_vcf=nt_anchor.upper()+anc.upper()
 
                 indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
                 if (indelNs>-3 or indel_length==0 or ancestral_state_vcf=="N" or ancestral_state_vcf=="-" or ancestral_state_vcf=="n"):
