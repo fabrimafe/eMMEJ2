@@ -70,7 +70,7 @@ all_args.add_argument("-a", "--alignment", required=False,
       help="a flag to turn on the realignment module")
 
 all_args.add_argument("-m", "--maxdistance", type=int ,default=None,
-        help="a flag that specify the max number of shifts in the DSB_generator_background")
+        help="a flag that specify the max number of shifts to each side in the DSB_generator_background")
 
 all_args.add_argument("-d", "--de_collapse_distance", type=int ,default=None,
         help="a flag that specify the max number of nt added to the right ot to the left of ANC and DER")
@@ -126,7 +126,7 @@ if args['verbose']:
 
 df = df.loc[(df['context_contains_N'] == False), :]
 df.drop(columns=['context_contains_N'], inplace=True)
-print(df[['DER', 'ANC']])
+#print(df[['DER', 'ANC']])
 # df = df.loc[df['CHR'] == 'pol_slip_monodirectional_0',:]
 
 #if genomic data realign indels
@@ -193,7 +193,7 @@ else:
 df.loc[:, 'DER'] = df.loc[:, 'DER'].str.upper()
 df.loc[:, 'ANC'] = df.loc[:, 'ANC'].str.upper()
 
-print(df.to_string())
+#print(df.to_string())
 
 de_collapse_distance= args['de_collapse_distance']
 if args ['de_collapse_distance'] is not None:
@@ -239,7 +239,7 @@ df.loc[(df['indel_type'] == 'DEL'), 'indel_len'] = df.loc[:, 'ref_len'] - df.loc
 df.loc[df['indel_type'] == 'SUB', 'indel_len'] = abs(df['ref_len'] - df['alt_len'])
 
 maxdistance = args['maxdistance']
-print(df.to_string())
+#print(df.to_string())
 if args ['maxdistance'] is not None:
     df = df.apply(lambda row: DSB_background_generator(refFA, row['CHR'], row['POS'],
                                                     row['ANC'], row['DER'],
@@ -251,7 +251,7 @@ if args ['maxdistance'] is not None:
 #remove duplicates for the same pos, anc and der
 df = df.drop_duplicates(subset=['POS','ANC','DER'], keep='first')
 df = df.reset_index(drop=True)
-print(df.to_string())
+#print(df.to_string())
 
 indel_position = args['windowsize']
 
@@ -401,6 +401,8 @@ for mech,pat,col in zip(mechanism, patterns, cols):
 
 # ----------- Make this more efficient -------------------------------------
 
+df['observed'] = (df['POS'] == df['variant_id'].str.split('_').str[1].astype(int)).astype(int)
+
 df['snap_repeat_pat_len'] = np.nan
 if 'SD_inverted_insertion' in df.columns:
     df.loc[df['SD_inverted_insertion']==True,'SD_II_repeat_pat_len'] = df.loc[df['SD_inverted_insertion']==True, 'SD_II_repeat_pat'].str.len()
@@ -413,7 +415,7 @@ if 'SD_direct_insertion' in df.columns:
 df.loc[df['SD_direct_insertion']==True,'SD_DI_repeat_pat_len'] = df.loc[df['SD_direct_insertion']==True, 'SD_DI_repeat_pat'].str.len()
 
 col_to_save = ['CHR', 'POS','variant_id', #'REF','ALT',
-            'ANC','DER','original_pos','direction', 'indel_type', 'indel_len',  
+            'ANC','DER','original_pos','direction', 'indel_type', 'indel_len', 'observed', 
             # deletions
             'del_mmej', 'del_mmejl','del_mmej_cand', 'del_mmej_marked_on_ref', 'del_mmej_marked',
             'del_last_dimer','del_mmej_cand_len',

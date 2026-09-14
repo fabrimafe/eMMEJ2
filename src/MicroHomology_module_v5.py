@@ -47,20 +47,20 @@ class emMEJrealignment:
 #            self.MH_lengths = "None"
 
         if (self.indel_type == 'INS'):  # cropping indel sequence to the right size.
-            print("ins")
+            #print("ins")
             self.indel_length = len(DER) - 1
             self.INDEL =  DER[len(ANC):] #fabri: is this for substitutions? Then why before length-1?
             self.ANC = ANC
             self.windowsize = windowsize
         if (self.indel_type == 'DEL'): 
-            print("del")
+            #print("del")
             self.indel_length = len(ANC) - 1
             self.ANC = ANC[len(DER):]
             self.INDEL = ANC[len(DER):]
             self.windowsize = windowsize + self.indel_length
             self.indel_position = self.windowsize
         if (self.indel_type == 'SUB'):
-            print("sub")
+            #print("sub")
             if len(ANC) >= len (DER):
                 self.indel_length = len(ANC) - len (DER)
                 self.INDEL = DER
@@ -74,9 +74,9 @@ class emMEJrealignment:
                 self.DER = DER       
                 
             self.windowsize = windowsize
-        print(f"DEBUG: indel_type = {repr(self.indel_type)}")
-        print(ANC)
-        print(DER)
+        #print(f"DEBUG: indel_type = {repr(self.indel_type)}")
+        #print(ANC)
+        #print(DER)
         print(self.pos_on_chr)
         self.ref_seq = get_ref_context(refFA=refFA, chrom=chrom,indel_pos=pos_on_chr,
                             context_window_size=self.windowsize,indel_seq=self.INDEL)
@@ -708,7 +708,7 @@ class emMEJrealignment:
                 
                 if not self.extension:
                     #in not elongation we define MH2 and P2 according to the distance of the pattern from the pos 
-                    print("OFF")
+                    #print("OFF")
                     rep_pat = II_pattern
                     rep_pat_pos_2 = self.mutant_sequence[
                     (self.indel_position):].index(rep_pat)
@@ -1427,21 +1427,21 @@ class emMEJrealignment:
             MH1 = self.ref_genome_up [ - MH_lengths :]  
             P1 = self.ref_genome_down [ len(self.ANC) : len(self.ANC) + MH_lengths ]
             DS_pattern = MH1 + self.INDEL + P1 
-            print("DS_pattern: " + DS_pattern)
+            #print("DS_pattern: " + DS_pattern)
             #print("MH1_P1: " + MH1_P1)
-            print("self.INDEL :" + self.INDEL)
-            print("MH1: "+ MH1)
-            print("P1: "+ P1)
+            #print("self.INDEL :" + self.INDEL)
+            #print("MH1: "+ MH1)
+            #print("P1: "+ P1)
             #print("ex: " + str(self.extension))
             
             if DS_pattern in self.ref_genome_down [len(self.ANC) + 1:]:
                 SD_direct_substitution = True
             else:
                 SD_direct_substitution = False 
-                print("BZR not found")
+                print("BZR direct not found")
 
             if SD_direct_substitution:
-                print("BZR found")
+                print("BZR direct found")
                 
                 if not self.extension:
                     #MH1 = non allungato, MH1_1 in fase di allungamento, MH1_2 =  MH1 a fine allungamento 
@@ -1466,11 +1466,11 @@ class emMEJrealignment:
                             self.indel_position + len(self.INDEL) + len(P1) +
                             rep_pat_pos + len(MH1) + len(self.INDEL) + len(P1)]
                 
-                    print("MH2: "+MH2)
-                    print("P2: "+P2)
+                    #print("MH2: "+MH2)
+                    #print("P2: "+P2)
                     
                     mmej_marked_inter_reps_seq = f'{self.DSB_down[(len(self.DER))+ len(P2) : (len(self.DER))+ len(P2) + rep_pat_pos]}'
-                    print("Y seq :"+mmej_marked_inter_reps_seq)
+                    #print("Y seq :"+mmej_marked_inter_reps_seq)
         
                     
                     # set output variables as attributes
@@ -1624,8 +1624,8 @@ class emMEJrealignment:
                     self.loop_out_dict = _d 
 
     def sd_inverted_substitution(self):
-        print("self.ANC:"+self.ANC)
-        print("self.DER:"+self.DER)
+        #print("self.ANC:"+self.ANC)
+        #print("self.DER:"+self.DER)
         """
         """
         
@@ -1636,20 +1636,20 @@ class emMEJrealignment:
             P1 = self.ref_genome_down [ len(self.ANC) : len(self.ANC) + MH_lengths ]
             #create the IS_pattern and search it
             IS_pattern = self.reverse_complement_converter(seq = MH1 + self.INDEL + P1)
-            print("IS_pattern: " + IS_pattern)
-            print("self.INDEL :" + self.INDEL)
-            print("MH1: "+ MH1)
-            print("P1: "+ P1)
+            #print("IS_pattern: " + IS_pattern)
+            #print("self.INDEL :" + self.INDEL)
+            #print("MH1: "+ MH1)
+            #print("P1: "+ P1)
             #print("ex: " + str(self.extension))
             #search the pattern after 1° P
             if IS_pattern in self.ref_genome_down [len(self.ANC) + MH_lengths:]:
                 SD_inverted_substitution = True
             else:
                 SD_inverted_substitution = False 
-                print("RZB not found")
+                print("RZBrevc not found")
 
             if SD_inverted_substitution:
-                print("RZB found")
+                print("RZBrevc found")
                
                 if not self.extension:
                     #MH1/P1 = not extended, MH2/P2 = MH and P revc not extended 
@@ -1673,16 +1673,16 @@ class emMEJrealignment:
                             self.indel_position + len(self.INDEL) + len(P1) +
                             rep_pat_pos + len(MH1) + len(self.INDEL) + len(P1)]
                 
-                    print("MHrevc: " + MHrevc)
-                    print("Prevc: " + Prevc)
+                    #print("MHrevc: " + MHrevc)
+                    #print("Prevc: " + Prevc)
 
                     mmej_marked_inter_reps_seq = f'{self.DSB_down[(len(self.DER))+ len(P1) : (len(self.DER))+ len(P1) + rep_pat_pos]}'
-                    print("Y seq :"+mmej_marked_inter_reps_seq)
+                    #print("Y seq :"+mmej_marked_inter_reps_seq)
         
                     
                     # set output variables as attributes
                     SD_I_Substitution_mutant_pattern = self.inverted_substitution_mutant_pattern_generator(P1=P1, MH1=MH1,rep_pat=rep_pat)
-                    print (SD_I_Substitution_mutant_pattern)
+                    #print (SD_I_Substitution_mutant_pattern)
                                  
                     SD_IS_Prevc = Prevc
                     SD_IS_MHrevc = MHrevc
@@ -1696,10 +1696,10 @@ class emMEJrealignment:
                     
                     up_start = len(self.ANC) + len (Prevc)  
                     down_start = - len(MHrevc) 
-                    print(up_start)
-                    print(down_start)
+                    #print(up_start)
+                    #print(down_start)
                     SD_IS_motif_pos_3 = get_motifs_pos_3(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=rep_pat,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
-                    print(SD_IS_motif_pos_3)
+                    #print(SD_IS_motif_pos_3)
 
                     #SD_IS_motif_pos.append(temp_SD_inverted_substitution[0])
                     SD_IS_motif_freq_small.append(temp_SD_inverted_substitution[1])

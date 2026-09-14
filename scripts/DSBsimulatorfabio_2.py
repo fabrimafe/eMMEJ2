@@ -653,7 +653,7 @@ def fa2SD_direct_substitution(refFA,chrom,pos,MH_length,SD_motif_length,max_dist
                 #ancestral_state_vcf=nt_anchor.upper()+anc.upper()
 
                 indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
-                if (indelNs>-3 or indel_length==0 or ancestral_state_vcf=="N" or ancestral_state_vcf=="-" or ancestral_state_vcf=="n"):
+                if (indelNs>-3 or indel_length==0 or anc_slide=="N" or anc_slide=="-" or anc_slide=="n"):
                     print("N found in indel")
                     return('error')
                 else:
