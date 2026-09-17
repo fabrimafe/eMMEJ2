@@ -1,3 +1,4 @@
+#terzo_EM
 library(data.table)
 
 # 1. MOTIF STRENGTH
@@ -83,7 +84,6 @@ calculate_M_strength <- function(row, lambda, beta, L0 = 2) {
 
     return(g)
 }
-
 # RAPPORTO OBSERVED / COUNTERFACTUAL
 obs_cf_ratio <- function(g_obs, g_cf) {
     cf_mean <- mean(g_cf, na.rm = TRUE)
@@ -105,7 +105,7 @@ motif_z_score <- function(g_obs, g_cf) {
     return(z)
 }
 
-# LIKELIHOOD DI M  
+# LIKELIHOOD DI M
 likelihood_M <- function(L, lambda_I_M, g_obs, g_cf) {
 
     p_length_M <- indel_length_prob(L = L, lambda_I = lambda_I_M)
@@ -116,7 +116,7 @@ likelihood_M <- function(L, lambda_I_M, g_obs, g_cf) {
     return(L_M)
 }
 
-# LIKELIHOOD DI NHEJ  
+# LIKELIHOOD DI NHEJ
 likelihood_NHEJ <- function(L, lambda_I_NHEJ, n_positions) {
     p_length_NHEJ <- indel_length_prob(L = L, lambda_I = lambda_I_NHEJ)
     p_position_NHEJ <- 1 / n_positions
@@ -138,99 +138,93 @@ posterior_M_NHEJ_prior <- function(L_M, L_NHEJ, pi_M, pi_NHEJ) {
 
     list(P_M = num_M / total, P_NHEJ = num_NHEJ / total)
 }
+# =========================================================
+# PRE-CALCOLO MULTI-ALIGNMENT (v2)
+# Discriminante = alignment_ID, non observed:
+#  - alignment_ID == 0  -> pool controfattuale
+#  - alignment_ID != 0  -> alignment candidati (uno per ciascun ID > 0)
+# n_positions = totale righe del gruppo (cf + alignment)
+# =========================================================
+precompute_variant_stats_multi <- function(data, lambda_M, beta_M,
+                                            lambda_I_M, lambda_I_NHEJ, L0 = 2) {
 
-# PRE-CALCOLO PER VARIANTE
-# Calcola, per ogni variant_id, tutte le quantità che NON dipendono dal prior (g_obs, g_cf, indel_length, n_positions,
-# L_M, L_NHEJ). Queste restano costanti durante il loop EM, perché lambda_M, beta_M, lambda_I_M, lambda_I_NHEJ sono fissi:
-# a cambiare, iterazione dopo iterazione, è solo il prior.
-precompute_variant_stats <- function(data, lambda_M, beta_M, lambda_I_M, lambda_I_NHEJ, L0 = 2) {
-
-    required_cols <- c("variant_id", "observed", "ANC", "DER",
+    required_cols <- c("variant_id", "alignment_ID", "ANC", "DER",
                         "SD_inverted_deletion", "SD_ID_motif_pos", "SD_ID_repeat_pat_len")
-
     missing_cols <- setdiff(required_cols, colnames(data))
-
     if (length(missing_cols) > 0) {
         stop(paste("Mancano le colonne:", paste(missing_cols, collapse = ", ")))
     }
 
-    data$g_M <- apply(data, 1, calculate_M_strength, lambda = lambda_M, beta = beta_M, L0 = L0)
+    data$g_M <- apply(data, 1, calculate_M_strength,
+                       lambda = lambda_M, beta = beta_M, L0 = L0)
 
     variant_ids <- unique(data$variant_id)
-
-    results <- vector("list", length(variant_ids))
+    out_list <- vector("list", length(variant_ids))
 
     for (i in seq_along(variant_ids)) {
 
         current_id <- variant_ids[i]
-
         group <- data[data$variant_id == current_id, ]
 
-        n_positions <- calculate_n_positions(group)
-
-        if (n_positions != 101) {
-            warning(paste("variant_id", current_id, "ha", n_positions, "posizioni invece di 101."))
-        }
-
-        obs <- group[group$observed == 1, ]
-
-        if (nrow(obs) != 1) {
-            warning(paste("variant_id", current_id, "non ha esattamente una riga observed = 1"))
-            next
-        }
-        cf <- group[group$observed == 0, ]
-        g_obs <- obs$g_M
+        # pool controfattuale: alignment_ID == 0
+        cf <- group[group$alignment_ID == 0, ]
         g_cf <- cf$g_M
 
-        indel_length <- (nchar(obs$ANC) - nchar(obs$DER))
+        # n_positions = TUTTE le righe del gruppo (cf + alignment candidati)
+        n_positions <- sum(!is.na(group$g_M))
 
-        cf_mean <- mean(g_cf, na.rm = TRUE)
-        cf_sd <- sd(g_cf, na.rm = TRUE)
-        ratio <- obs_cf_ratio(g_obs = g_obs, g_cf = g_cf)
-        z <- motif_z_score(g_obs = g_obs, g_cf = g_cf)
-        p_position_M <- position_probability(g_obs = g_obs, g_cf = g_cf)
-        p_length_M <- indel_length_prob(L = indel_length, lambda_I = lambda_I_M)
+        # alignment candidati: alignment_ID != 0 (indipendentemente da observed)
+        align_rows <- group[group$alignment_ID != 0, ]
 
-        L_M <- likelihood_M(L = indel_length, lambda_I_M = lambda_I_M, g_obs = g_obs, g_cf = g_cf)
-        L_NHEJ <- likelihood_NHEJ(L = indel_length, lambda_I_NHEJ = lambda_I_NHEJ, n_positions = n_positions)
+        if (nrow(align_rows) == 0) {
+            warning(paste("variant_id", current_id, "non ha alignment candidati (alignment_ID != 0)."))
+            next
+        }
+        align_list <- vector("list", nrow(align_rows))
 
-        results[[i]] <- data.frame(
-            variant_id = current_id,
-            indel_length = indel_length,
-            g_obs = g_obs,
-            g_cf_sum = sum(g_cf, na.rm = TRUE),
-            n_counterfactuals = length(g_cf),
-            n_positions = n_positions,
-            #cf_mean = cf_mean,
-            obs_cf_ratio = ratio,
-            #cf_sd = cf_sd,
-            #z_score = z,
-            p_position_M = p_position_M,
-	    L_M = L_M,
-            L_NHEJ = L_NHEJ
-        )
+        for (j in seq_len(nrow(align_rows))) {
+            row <- align_rows[j, ]
+            g_obs <- row$g_M
+            indel_length <- nchar(row$ANC) - nchar(row$DER)
+            p_position_M <- position_probability(g_obs = g_obs, g_cf = g_cf)
+
+            L_M <- likelihood_M(L = indel_length, lambda_I_M = lambda_I_M,
+                                 g_obs = g_obs, g_cf = g_cf)
+            L_NHEJ <- likelihood_NHEJ(L = indel_length, lambda_I_NHEJ = lambda_I_NHEJ,
+                                      n_positions = n_positions)
+
+            align_list[[j]] <- data.frame(
+                variant_id = current_id,
+                alignment_ID = row$alignment_ID,
+                indel_length = indel_length,
+                g_obs = g_obs,
+                n_counterfactuals = length(g_cf),
+                n_positions = n_positions,
+                p_position_M = p_position_M,
+                L_M = L_M,
+                L_NHEJ = L_NHEJ
+            )
+        }
+
+        out_list[[i]] <- do.call(rbind, align_list)
     }
 
-    results <- do.call(rbind, results)
-
+    results <- do.call(rbind, out_list)
     return(results)
 }
 
-#in questa versione pesiamo tramite EM lambda_I_M e lambda_I_NHEJ
-#L_M e L_NHEJ dipendono da questi due valori, quindi nache loro cambiano con i due lmbda
-#l'unica parte di L_M e L_NHEJ che non dipende da loro è p_position_ che mettiamo come fisso
+# EM SUI PRIOR (pi_M, pi_NHEJ) + lambda_I_M / lambda_I_NHEJ
+# generalizzato per K alignment per variante:
+# la posterior normalizza su TUTTE le ipotesi (mecc. x alignment)
+# della STESSA variante, non riga per riga.
 
-# EM SUI PRIOR (pi_M, pi_NHEJ)
-#le prior all'inizio sono 0.5 e 0.5,
-#stats: un data frame che deve contenere le colonne L_M e L_NHEJ
+em_prior_lambda_M_NHEJ_multi <- function(stats,
+                                          pi_M_init = 0.5,
+                                          lambda_I_M_init = 0.3,
+                                          lambda_I_NHEJ_init = 0.3,
+                                          max_iter = 100, tol = 1e-5, verbose = TRUE) {
 
-em_prior_lambda_M_NHEJ <- function(stats,
-                                    pi_M_init = 0.5,
-                                    lambda_I_M_init = 0.3,
-                                    lambda_I_NHEJ_init = 0.3,
-                                    max_iter = 100, tol = 1e-5, verbose = TRUE) {
-
-    stopifnot(all(c("p_position_M", "n_positions", "indel_length") %in% colnames(stats)))
+    stopifnot(all(c("variant_id", "p_position_M", "n_positions", "indel_length") %in% colnames(stats)))
     stopifnot(pi_M_init > 0 && pi_M_init < 1)
     stopifnot(lambda_I_M_init > 0 && lambda_I_M_init < 1)
     stopifnot(lambda_I_NHEJ_init > 0 && lambda_I_NHEJ_init < 1)
@@ -240,54 +234,54 @@ em_prior_lambda_M_NHEJ <- function(stats,
     lambda_I_M <- lambda_I_M_init
     lambda_I_NHEJ <- lambda_I_NHEJ_init
 
-    # parte fissa, non dipende dal prior né da lambda: si calcola una volta sola
-    p_position_NHEJ <- 1 / stats$n_positions #stats$n_positions =  quanto il motivo giustifica la posizione osservata
-    L_vec <- stats$indel_length #vettore dove ho tutte le indel_length
+    p_position_NHEJ <- 1 / stats$n_positions
+    L_vec <- stats$indel_length
+    v_id <- stats$variant_id
+    first_of_variant <- !duplicated(v_id)   # per contare ogni variante una sola volta
 
     history <- data.frame(iter = integer(0), pi_M = numeric(0), pi_NHEJ = numeric(0),
                            lambda_I_M = numeric(0), lambda_I_NHEJ = numeric(0),
                            delta = numeric(0), Loglik = numeric(0))
 
-    eps <- 1e-6  # per evitare che lambda collassi esattamente a 0 o 1 (dgeom degenere)
+    eps <- 1e-6
 
     for (iter in seq_len(max_iter)) {
 
-        # ---- ricalcolo di L_M e L_NHEJ con i lambda correnti ----
-	#prima calcola la p_length con i nuovi parametri usando l_vec e i nuovi lambda, se cambiano i lambda cambiano anche i p_length
+        # ---- ricalcolo L_M, L_NHEJ con i lambda correnti ----
         p_length_M    <- dgeom(L_vec - 1, prob = lambda_I_M)
         p_length_NHEJ <- dgeom(L_vec - 1, prob = lambda_I_NHEJ)
-	# e poi calcoli le nuove L_M, dato che cmbiano anche loro
         L_M    <- p_length_M    * stats$p_position_M
         L_NHEJ <- p_length_NHEJ * p_position_NHEJ
 
-        # ---- E-step: posterior (vettorizzato, niente mapply riga per riga) ----i
-	#moltiplica ogni prior per la likelihood corrente
-	#crea il totale
-        num_M <- pi_M * L_M
-        num_NHEJ <- pi_NHEJ * L_NHEJ
-        tot <- num_M + num_NHEJ
-	#e poi graie al totale ricava le nuove posterior
-        P_M <- ifelse(is.na(tot) | tot == 0, NA_real_, num_M / tot)
-        P_NHEJ <- ifelse(is.na(tot) | tot == 0, NA_real_, num_NHEJ / tot)
-	#prende tutte le likelihood le logga e fa la somma
-        # ---- Loglik osservata, con i parametri usati in QUESTO E-step ----
-        Loglik <- sum(log(tot), na.rm = TRUE)
+        # ---- E-step: posterior normalizzata su TUTTI gli alignment della variante ----
+        joint_M    <- pi_M    * L_M
+        joint_NHEJ <- pi_NHEJ * L_NHEJ
+
+        # somma per variante (broadcast: ogni riga della stessa variante ottiene lo stesso totale)
+        variant_evidence <- ave(joint_M + joint_NHEJ, v_id, FUN = sum)
+
+        P_M    <- ifelse(is.na(variant_evidence) | variant_evidence == 0, NA_real_, joint_M    / variant_evidence)
+        P_NHEJ <- ifelse(is.na(variant_evidence) | variant_evidence == 0, NA_real_, joint_NHEJ / variant_evidence)
+
+        # Loglik: una sola volta per variante (i totali sono ripetuti sulle righe della stessa variante)
+        Loglik <- sum(log(variant_evidence[first_of_variant]), na.rm = TRUE)
 
         # ---- M-step ----
-        pi_M_new <- mean(P_M, na.rm = TRUE)
-        pi_NHEJ_new <- mean(P_NHEJ, na.rm = TRUE)
-	
-	#Questa è la formula chiusa della media pesata inversa lambda = Σw / Σ(w·L),
-	#che equivale a dire "il nuovo lambda è l'inverso della lunghezza media, pesata 
-	#per quanto ogni osservazione appartiene a quella classe".
+        # pi_M: media, PER VARIANTE, della massa posterior totale assegnata a M
+        #       (somma di P_M sugli alignment di quella variante), non media riga per riga
+        pM_per_variant    <- ave(P_M,    v_id, FUN = sum)
+        pNHEJ_per_variant <- ave(P_NHEJ, v_id, FUN = sum)
+
+        pi_M_new    <- mean(pM_per_variant[first_of_variant],    na.rm = TRUE)
+        pi_NHEJ_new <- mean(pNHEJ_per_variant[first_of_variant], na.rm = TRUE)
+
+        # lambda: media pesata su TUTTE le coppie (variante, alignment)
         lambda_I_M_new    <- sum(P_M,    na.rm = TRUE) / sum(P_M    * L_vec, na.rm = TRUE)
         lambda_I_NHEJ_new <- sum(P_NHEJ, na.rm = TRUE) / sum(P_NHEJ * L_vec, na.rm = TRUE)
-        #cioè i nuovi lambda_I_NHEJ sono derivati da i P_NHEJ fratto i P_NHEJ * l_vec che è il vettore con tutte le lunghezze 
-        # clip di sicurezza per restare in (0,1) ed evitare instabilità numerica
+
         lambda_I_M_new    <- min(max(lambda_I_M_new, eps), 1 - eps)
         lambda_I_NHEJ_new <- min(max(lambda_I_NHEJ_new, eps), 1 - eps)
 
-        # ---- delta: la variazione massima fra tutti i parametri stimati ----
         delta <- max(
             abs(pi_M_new - pi_M),
             abs(lambda_I_M_new - lambda_I_M),
@@ -297,7 +291,8 @@ em_prior_lambda_M_NHEJ <- function(stats,
         history <- rbind(
             history,
             data.frame(iter = iter, pi_M = pi_M_new, pi_NHEJ = pi_NHEJ_new,
-                       lambda_I_M = lambda_I_M_new, lambda_I_NHEJ = lambda_I_NHEJ_new,delta = delta, Loglik = Loglik)
+                       lambda_I_M = lambda_I_M_new, lambda_I_NHEJ = lambda_I_NHEJ_new,
+                       delta = delta, Loglik = Loglik)
         )
 
         if (verbose) {
@@ -335,14 +330,14 @@ em_prior_lambda_M_NHEJ <- function(stats,
 
 # FUNZIONE PRINCIPALE (precalcolo + EM)
 
-run_em_M_vs_NHEJ <- function(data, lambda_M, beta_M,
+run_em_M_vs_NHEJ_multi <- function(data, lambda_M, beta_M,
                               pi_M_init = 0.5,
                               lambda_I_M_init = 0.3, lambda_I_NHEJ_init = 0.3,
                               max_iter = 100, tol = 1e-8,
                               L0 = 2, verbose = TRUE) {
 
     cat("Pre-calcolo delle quantità fisse per variante (posizione, lunghezza)...\n")
-    stats <- precompute_variant_stats(
+    stats <- precompute_variant_stats_multi(
         data = data,
         lambda_M = lambda_M,
         beta_M = beta_M,
@@ -353,7 +348,7 @@ run_em_M_vs_NHEJ <- function(data, lambda_M, beta_M,
     cat("Pre-calcolo completato:", nrow(stats), "variant_id.\n\n")
 
     cat("Esecuzione EM su pi_M, pi_NHEJ, lambda_I_M, lambda_I_NHEJ...\n")
-    em_out <- em_prior_lambda_M_NHEJ(
+    em_out <- em_prior_lambda_M_NHEJ_multi(
         stats = stats,
         pi_M_init = pi_M_init,
         lambda_I_M_init = lambda_I_M_init,
@@ -400,12 +395,12 @@ if (sys.nframe() == 0) {
     data <- fread(input_file, sep = "\t", header = TRUE)
     cat("Importazione completata:", nrow(data), "righe x", ncol(data), "colonne\n\n")
 
-    em_out <- run_em_M_vs_NHEJ(
+    em_out <- run_em_M_vs_NHEJ_multi(
         data = data,
         lambda_M = 50,
         beta_M = 0.7,
-        lambda_I_M = 0.3,
-        lambda_I_NHEJ = 0.3,
+        lambda_I_M_init = 0.3,
+        lambda_I_NHEJ_init = 0.3,
         pi_M_init = pi_M_init,
         max_iter = max_iter,
         tol = tol

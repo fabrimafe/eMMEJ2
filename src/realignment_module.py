@@ -89,7 +89,7 @@ def flatten_2list(list_of_lists):
     return(flat_list)
 
 
-def DSB_background_generator(refFA, chrom, pos, ref, alt, indel_type, max_distance):
+def DSB_background_generator(refFA, chrom, pos, original_pos, ref, alt, indel_type, max_distance):
     """
     creating 'background' variants shifting the pos upstream and downsteam 
 
@@ -108,11 +108,18 @@ def DSB_background_generator(refFA, chrom, pos, ref, alt, indel_type, max_distan
     results = []
     ref_len = len(ref)
     alt_len = len(alt)
+    ori_pos = str(original_pos).split('.')[0]  # "17209763" da 17209763.2
+    
+    if isinstance(pos, (list, tuple)):
+        pos_min = min(pos)
+        pos_max = max(pos)
+    else:
+        pos_min = pos_max = pos
 
     for n in range(0, max_distance + 1):
         for direction in (-1, 1):          # -1 = sinistra, +1 = destra
-            new_pos = pos + direction * n
-            new_variant_id = f"{chrom}_{pos}"
+            new_pos = pos_min - n if direction == -1 else pos_max + n 
+            new_variant_id = f"{chrom}_{ori_pos}"
             
             if indel_type == 'DEL':
                 # ri-pesco l'intera regione (anchor + basi delete) dal riferimento
@@ -133,7 +140,7 @@ def DSB_background_generator(refFA, chrom, pos, ref, alt, indel_type, max_distan
             else:
                 raise ValueError(f"indel_type non riconosciuto: {indel_type}")
 
-            results.append((chrom, new_pos,new_variant_id, new_anc, new_der,pos,indel_type))
+            results.append((chrom, new_pos,new_variant_id, new_anc, new_der,original_pos,indel_type,0))
 
     return results
 

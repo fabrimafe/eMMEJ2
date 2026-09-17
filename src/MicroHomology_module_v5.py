@@ -77,7 +77,7 @@ class emMEJrealignment:
         #print(f"DEBUG: indel_type = {repr(self.indel_type)}")
         #print(ANC)
         #print(DER)
-        print(self.pos_on_chr)
+        #print(self.pos_on_chr)
         self.ref_seq = get_ref_context(refFA=refFA, chrom=chrom,indel_pos=pos_on_chr,
                             context_window_size=self.windowsize,indel_seq=self.INDEL)
         self.ref_seq = self.ref_seq.upper()

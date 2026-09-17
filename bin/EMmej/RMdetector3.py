@@ -193,7 +193,7 @@ else:
 df.loc[:, 'DER'] = df.loc[:, 'DER'].str.upper()
 df.loc[:, 'ANC'] = df.loc[:, 'ANC'].str.upper()
 
-#print(df.to_string())
+
 
 de_collapse_distance= args['de_collapse_distance']
 if args ['de_collapse_distance'] is not None:
@@ -204,7 +204,7 @@ if args ['de_collapse_distance'] is not None:
     df = flatten_2list(df.tolist())
     df = pd.DataFrame(df, columns=['CHR', 'POS','variant_id', 'ANC', 'DER','original_pos'])
 
-print(df.to_string())
+#print(df.to_string())
 # defining indel type and length
 df.loc[:, 'indel_type'] = np.nan
 df.loc[
@@ -232,27 +232,45 @@ df.loc[
 """
 
 df.loc[:, 'indel_len'] = np.nan
+"""
 df.loc[:, 'ref_len'] = df.loc[:,'ANC'].str.len()
 df.loc[:, 'alt_len'] = df.loc[:,'DER'].str.len()
 df.loc[(df['indel_type'] == 'INS'), 'indel_len'] = df.loc[:, 'alt_len'] - df.loc[:, 'ref_len']
 df.loc[(df['indel_type'] == 'DEL'), 'indel_len'] = df.loc[:, 'ref_len'] - df.loc[:, 'alt_len']
 df.loc[df['indel_type'] == 'SUB', 'indel_len'] = abs(df['ref_len'] - df['alt_len'])
+"""
+
+df_alignments = df.copy()
+df_alignments['alignment_ID'] = df_alignments['original_pos'].astype(str).str.split('.').str[-1].astype(int)
 
 maxdistance = args['maxdistance']
-#print(df.to_string())
+#======DSB_background_generators useful to create a background of DSB around the indel======
 if args ['maxdistance'] is not None:
-    df = df.apply(lambda row: DSB_background_generator(refFA, row['CHR'], row['POS'],
+    df = df.apply(lambda row: DSB_background_generator(refFA, row['CHR'], row['POS'],row['original_pos'],
                                                     row['ANC'], row['DER'],
                                                     row['indel_type'], maxdistance),
                    axis=1)
     df = flatten_2list(df.tolist())
-    df = pd.DataFrame(df, columns=['CHR', 'POS','variant_id', 'ANC', 'DER','original_pos','indel_type'])
+    df = pd.DataFrame(df, columns=['CHR', 'POS','variant_id', 'ANC', 'DER','original_pos','indel_type','alignment_ID'])
+
+#print(df.to_string())
 
 #remove duplicates for the same pos, anc and der
 df = df.drop_duplicates(subset=['POS','ANC','DER'], keep='first')
 df = df.reset_index(drop=True)
-#print(df.to_string())
 
+
+df = pd.concat([df_alignments, df], ignore_index=True)
+df = df.reset_index(drop=True)
+# ricalcolo ref_len, alt_len, indel_len per tutte le righe (originali + background)
+df['ref_len'] = df['ANC'].str.len()
+df['alt_len'] = df['DER'].str.len()
+df['indel_len'] = (df['ref_len'] - df['alt_len']).abs()
+#print(df.to_string())
+#remove duplicates for the same pos, anc and der
+df = df.drop_duplicates(subset=['POS','ANC','DER'], keep='first')
+df = df.reset_index(drop=True)
+#print(df.to_string())
 indel_position = args['windowsize']
 
 
@@ -415,7 +433,7 @@ if 'SD_direct_insertion' in df.columns:
 df.loc[df['SD_direct_insertion']==True,'SD_DI_repeat_pat_len'] = df.loc[df['SD_direct_insertion']==True, 'SD_DI_repeat_pat'].str.len()
 
 col_to_save = ['CHR', 'POS','variant_id', #'REF','ALT',
-            'ANC','DER','original_pos','direction', 'indel_type', 'indel_len', 'observed', 
+            'ANC','DER','alignment_ID','direction', 'indel_type', 'indel_len', 'observed', 
             # deletions
             'del_mmej', 'del_mmejl','del_mmej_cand', 'del_mmej_marked_on_ref', 'del_mmej_marked',
             'del_last_dimer','del_mmej_cand_len',
