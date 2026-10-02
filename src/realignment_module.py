@@ -232,23 +232,50 @@ def flatten_2list(list_of_lists):
             flat_list.append(item2)
     return(flat_list)
 
+"""
 def set_ancestral_state_indel(df: pd.DataFrame):
     """
-    Set columns for ancestral and derived alleles based on
-    a binary column (ANCESTRAL) indicating whether the ancestral state is:
-    REF allele - if ANCESTRAL==0
-    ALT allele - if ANCESTRAL==1
-    Args:
-        df (pd.DataFrame) : A dataframe with the following
-            columns: 'CHR', 'POS', 'REF', 'ALT', 'ANCESTRAL'
+    #Set columns for ancestral and derived alleles based on
+    #a binary column (ANCESTRAL) indicating whether the ancestral state is:
+    #REF allele - if ANCESTRAL==0
+    #ALT allele - if ANCESTRAL==1
+    #Args:
+        #df (pd.DataFrame) : A dataframe with the following
+            #columns: 'CHR', 'POS', 'REF', 'ALT', 'ANCESTRAL'
 
-    Implementation:
-    it uses numpy select, which vectorialize if-conditions (specified in condlist) and
-    respective consequences (specified in choicelist)
+    #Implementation:
+    #it uses numpy select, which vectorialize if-conditions (specified in condlist) and
+    #respective consequences (specified in choicelist)
     """
     condl = [df['ANCESTRAL'] == 0, df['ANCESTRAL'] == 1]
     choicel = [df['REF'], df['ALT']]
-    df['ANC'] = np.select(condlist=condl,  choicelist=choicel)
-    choicel = [df['ALT'], df['REF']]
-    df['DER'] = np.select(condlist=condl,  choicelist=choicel)
+    #df['ANC'] = np.select(condlist=condl,  choicelist=choicel)
 
+    df['ANC'] = np.select(condlist=condl, choicelist=choicel, default='')
+
+    choicel = [df['ALT'], df['REF']]
+    
+    #df['DER'] = np.select(condlist=condl,  choicelist=choicel)
+
+    df['DER'] = np.select(condlist=condl, choicelist=choicel, default='')
+"""
+def set_ancestral_state_indel_2(df: pd.DataFrame):
+    """
+    Set columns for ancestral and derived alleles based on
+    a binary column (ANCESTRAL) indicating whether the ancestral state is:
+    if ANCESTRAL == 0: ANC is REF
+    if ANCESTRAL == 1: ANC is ALT
+    """
+    #crea una serie di true e false in base ai valori di ancestral
+    #se è 0 = false, se 1 allora True
+    swap = df['ANCESTRAL'] == 1 
+    #poi creo due valorisu cui lavorare
+    ref = df['REF'].copy()
+    alt = df['ALT'].copy()
+    #qui dico che ANC diventa REF se -swap = TRUE, e -swap è il contrario di swap
+    #quindi se swap = TRUE -swap = FALSE e ANC diventerà ALT 
+    df['ANC'] = ref.where(~swap, alt)
+    #stessa logica qui
+    df['DER'] = alt.where(~swap, ref)
+    #elimino le colonne direttamente nello script, prima lo facevo fuori la funzione
+    df.drop(columns=['REF', 'ALT'], inplace=True)    

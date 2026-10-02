@@ -1,8 +1,6 @@
 library(data.table)
 library(optimx)
 
-
-# =========================================================
 # 0. CONFIGURAZIONE DEI MECCANISMI
 # =========================================================
 #
@@ -19,29 +17,27 @@ library(optimx)
 # nuovo elemento a questa lista con questi 3 campi.
 # NON bisogna modificare il resto dell'EM: tutte le funzioni
 # sotto sono generiche e leggono i nomi delle colonne da qui.
-# =========================================================
 
 MECHANISMS <- list(
 
   ID = list(
     mechanism_col = "SD_inverted_deletion",
     motif_pos_col = "SD_ID_motif_pos",
-    motif_len_col = "SD_ID_repeat_pat_len"
+    motif_len_col = "SD_ID_repeat_pat_len",
+    len_scale     = 0.5
   ),
 
   DD = list(
     mechanism_col = "SD_direct_deletion",
     motif_pos_col = "SD_DD_motif_pos",
-    motif_len_col = "SD_DD_repeat_pat_len"
+    motif_len_col = "SD_DD_repeat_pat_len",
+    len_scale     = 0.5
   )
 )
 
 
-# =========================================================
 # 1. FUNZIONI BASE
-# =========================================================
 
-# ---------------------------------------------------------
 # motif_strength()
 #
 # Calcola la "forza" complessiva di un insieme di motivi
@@ -113,11 +109,8 @@ parse_motif_positions <- function(x) {
   p[!is.na(p)]
 }
 
-
-# =========================================================
 # 2. PRE-PARSING DEI MOTIVI
-# =========================================================
-#
+
 # prepare_motif_data()
 #
 # Per UN dato meccanismo, scandisce tutte le righe del
@@ -142,6 +135,7 @@ prepare_motif_data <- function(data, mechanism) {
   mechanism_col <- mechanism$mechanism_col
   motif_pos_col <- mechanism$motif_pos_col
   motif_len_col <- mechanism$motif_len_col
+  len_scale <- if (is.null(mechanism$len_scale)) 1 else mechanism$len_scale
 
   # Righe che usano questo meccanismo
   is_M <- trimws(as.character(data[[mechanism_col]])) == "TRUE"
@@ -150,7 +144,7 @@ prepare_motif_data <- function(data, mechanism) {
 
   for (i in which(is_M)) {
     d <- parse_motif_positions(data[[motif_pos_col]][i])
-    ml <- as.numeric(data[[motif_len_col]][i])
+    ml <- as.numeric(data[[motif_len_col]][i]) * len_scale
     if (length(d) == 0 || is.na(ml)) next  # riga senza motivi utilizzabili
 
     # "Espande" la riga i: un elemento per ogni posizione di motivo trovata

@@ -50,9 +50,6 @@ all_args.add_argument("-mhl", "--MH_lengths", required=False ,default=2,
 all_args.add_argument("-cr", "--CRISPR", required=False, action='store_true',default=False, 
       help="a flag to indicate if the algorithm performes on CRISPR data")
 
-all_args.add_argument("-anc", "--ancestral", required=False, action='store_true',default=False, 
-      help="a flag to indicate whether an ancestral state is available or not")
-
 all_args.add_argument("-ic", "--include_context", required=False,  default=False, 
       action='store_true',
       help="a flag to indicate whether to include context in output or not")
@@ -90,10 +87,10 @@ MH_lengths=args['MH_lengths'].split(",")
 MH_lengths = [int(x) for x in MH_lengths]
 
 path_to_data = args["vcf"]
-Dtypes={'CHR':str, 'POS':int,'variant_id':str, 'REF':str, 'ALT':str, 'ANCESTRAL': str}
+Dtypes={'CHR':str, 'POS':int,'variant_id':str, 'REF':str, 'ALT':str, 'ANCESTRAL': int}
 col_names = ['CHR', 'POS','variant_id', 'REF', 'ALT', 'ANCESTRAL']
 
-if not args['ancestral']: col_names.remove('ANCESTRAL')
+#if not args['ancestral']: col_names.remove('ANCESTRAL')
 df = pd.read_csv(path_to_data, sep="\t", header=None, dtype=Dtypes, 
                     names=col_names, comment='#') 
 
@@ -101,8 +98,13 @@ df = pd.read_csv(path_to_data, sep="\t", header=None, dtype=Dtypes,
 
 #df = df.loc[(df['REF'].str.len() != df['ALT'].str.len()), :]
 if args['verbose']: print(f"Input data dimentions:{df.shape}")
-if args['ancestral']: set_ancestral_state_indel(df=df)
-else: df.rename(columns={'REF': 'ANC', 'ALT': 'DER'}, inplace=True)
+
+
+set_ancestral_state_indel_2(df=df)
+
+#if args['ancestral']: set_ancestral_state_indel(df=df)
+#else: df.rename(columns={'REF': 'ANC', 'ALT': 'DER'}, inplace=True)
+
 #  reading fasta file using pysam
 fastafile=args['ref']
 refFA=FastaFile(fastafile)
@@ -258,6 +260,7 @@ if args ['maxdistance'] is not None:
 #remove duplicates for the same pos, anc and der
 df = df.drop_duplicates(subset=['POS','ANC','DER'], keep='first')
 df = df.reset_index(drop=True)
+
 
 
 df = pd.concat([df_alignments, df], ignore_index=True)
@@ -421,23 +424,12 @@ for mech,pat,col in zip(mechanism, patterns, cols):
 
 df['observed'] = (df['POS'] == df['variant_id'].str.split('_').str[1].astype(int)).astype(int)
 
-df['snap_repeat_pat_len'] = np.nan
-if 'SD_inverted_insertion' in df.columns:
-    df.loc[df['SD_inverted_insertion']==True,'SD_II_repeat_pat_len'] = df.loc[df['SD_inverted_insertion']==True, 'SD_II_repeat_pat'].str.len()
-#if 'SD_loop_out' in df.columns:
-    #df['loop_repeat_pat_len'] = np.nan
-#df.loc[df['SD_loop_out']==True,'loop_repeat_pat_len'] = df.loc[df['SD_loop_out']==True, 'loop_repeat_pat'].str.len()
-
-if 'SD_direct_insertion' in df.columns:
-    df['SD_DI_repeat_pat_len'] = np.nan
-df.loc[df['SD_direct_insertion']==True,'SD_DI_repeat_pat_len'] = df.loc[df['SD_direct_insertion']==True, 'SD_DI_repeat_pat'].str.len()
-
 col_to_save = ['CHR', 'POS','variant_id', #'REF','ALT',
             'ANC','DER','alignment_ID','direction', 'indel_type', 'indel_len', 'observed', 
             # deletions
             'del_mmej', 'del_mmejl','del_mmej_cand', 'del_mmej_marked_on_ref', 'del_mmej_marked',
             'del_last_dimer','del_mmej_cand_len',
-            #del_mmej motif
+            #'del_mmej motif',
             'del_mmej_motif_pos','del_mmej_freq_small', 'del_mmej_freq_large',
                       
             #SD-direct_deletion

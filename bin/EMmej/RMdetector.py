@@ -192,6 +192,8 @@ df.reset_index(drop=True, inplace=True)
 df = df.join(df2, how = 'right')
 df['direction'] = 0
 
+print(df.to_string())
+
 print("appending done")
 #2nd step, run on flipped seq (3'->5'):--------->>>>>>>>
 #if crispr, look for ALL patterns ALSO on the flipped seq:-->
@@ -227,7 +229,9 @@ if args['CRISPR']:
     # direction, this is necessary for proper EM functioning
     df['variant_id'] = df.apply(
         lambda row: f"{row['variant_id']}.{row['direction']}", axis=1)
-    
+
+
+print(variant_id)
 # if not crispr, look for patterns (only for insertions, no deletion) on the fliped seq (3'->5'):--> 
 print("start insertions")
 if not args['CRISPR']:
