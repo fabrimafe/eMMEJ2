@@ -38,9 +38,9 @@ MECHANISMS <- list(
 
 
   MMEJ = list(
-    mechanism_col = "del_mmej",
+    mechanism_col = "MMEJ",
     motif_pos_col = NULL,
-    motif_len_col = "del_mmej_cand_len",
+    motif_len_col = "MMEJ_motif_len",
     len_scale = 1
   ),
 
@@ -143,6 +143,16 @@ compute_L <- function(anc, der) {
   if (L == 0) L <- 1  # sicurezza: ANC identico a DER (errore nei dati)
   L
 }
+
+#se ANC e DER hanno lunghezza diversa -> vero indel,L = lunghezza del maggiore fra ANC e DER
+#- se ANC e DER hanno la stessa lunghezza -> sostituzione/MNV, L = lunghezza di ANC che è uguale a lunghezza di DER
+max_L <- function(anc,der) {
+  LA <- nchar(anc)
+  LD <- nchar(der)
+  if (LA >= LD) return (LA)
+  else return (LD)
+}
+
 
 # extract_first_from_brackets
 # Questa funzione riconosce la presenza delle parentesi
@@ -365,7 +375,7 @@ precompute_variant_stats_multi <- function(data, mechanisms, lambda_init, beta_i
     # Un blocco per ogni allineamento candidato di questa variante
     for (j in seq_len(nrow(align_rows))) {
       row <- align_rows[j]
-      L <- compute_L(row$ANC, row$DER)  # lunghezza dell'indel, se ANC = DER allora distanza di hamming 
+      L <- max_L(row$ANC, row$DER)  # lunghezza dell'indel, se ANC = DER allora distanza di hamming 
 
       # Colonne comuni a tutti i meccanismi
       result_row <- data.frame(

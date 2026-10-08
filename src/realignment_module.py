@@ -232,7 +232,7 @@ def flatten_2list(list_of_lists):
             flat_list.append(item2)
     return(flat_list)
 
-"""
+    """
 def set_ancestral_state_indel(df: pd.DataFrame):
     """
     #Set columns for ancestral and derived alleles based on
@@ -258,7 +258,7 @@ def set_ancestral_state_indel(df: pd.DataFrame):
     #df['DER'] = np.select(condlist=condl,  choicelist=choicel)
 
     df['DER'] = np.select(condlist=condl, choicelist=choicel, default='')
-"""
+    """
 def set_ancestral_state_indel_2(df: pd.DataFrame):
     """
     Set columns for ancestral and derived alleles based on

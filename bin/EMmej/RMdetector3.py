@@ -427,41 +427,52 @@ df['observed'] = (df['POS'] == df['variant_id'].str.split('_').str[1].astype(int
 col_to_save = ['CHR', 'POS','variant_id', #'REF','ALT',
             'ANC','DER','alignment_ID','direction', 'indel_type', 'indel_len', 'observed', 
             # deletions
-            'del_mmej', 'del_mmejl','del_mmej_cand', 'del_mmej_marked_on_ref', 'del_mmej_marked',
-            'del_last_dimer','del_mmej_cand_len',
-            #'del_mmej motif',
-            'del_mmej_motif_pos','del_mmej_freq_small', 'del_mmej_freq_large',
-                      
+            'MMEJ', 'MMEJ_motif_len',
+                     
             #SD-direct_deletion
-            'SD_direct_deletion','SD_DD_mutant_pattern','SD_DD_MH2','SD_DD_P2',
-            'SD_DD_repeat_pat','SD_DD_repeat_pat_len','SD_DD_last_dimer','SD_DD_dist_between_reps',
-            'SD_DD_motif_pos','SD_DD_motif_freq_small','SD_DD_motif_freq_large',
+            'SD_direct_deletion',
             
+            'SD_DD_repeat_pat_len',
+            
+            'SD_DD_motif_pos',
+                        
             # SD_inverted_deletions
-            'SD_inverted_deletion','SD_ID_mutant_pattern','SD_ID_MHrevc','SD_ID_Prevc',
-            'SD_ID_repeat_pat','SD_ID_repeat_pat_len','SD_ID_last_dimer','SD_ID_dist_between_reps',
-            'SD_ID_motif_pos','SD_ID_motif_freq_small','SD_ID_motif_freq_large',
+            'SD_inverted_deletion',
 
-            # SD_direct_insertion
-            'SD_direct_insertion','SD_DI_mutant_pattern', 'SD_DI_MH2',
-            'SD_DI_P2','SD_DI_repeat_pat', 'SD_DI_repeat_pat_len',
-            'SD_DI_last_dimer', 'SD_DI_dist_between_reps','SD_DI_motif_pos',
-            'SD_DI_motif_freq_small','SD_DI_motif_freq_large',
+            'SD_ID_repeat_pat_len',
             
+            'SD_ID_motif_pos',
+            
+            # SD_direct_insertion
+            'SD_direct_insertion',
+            
+            'SD_DI_repeat_pat_len',
+            
+            'SD_DI_motif_pos',
+           
             #SD_inverted_insertion
-            'SD_inverted_insertion','SD_II_mutant_pattern','SD_II_MHrevc','SD_II_Prevc',
-            'SD_II_repeat_pat','SD_II_repeat_pat_len','SD_II_last_dimer','SD_II_dist_between_reps',
-            'SD_II_motif_pos','SD_II_motif_freq_small','SD_II_motif_freq_large',
+            'SD_inverted_insertion',
+            
+            'SD_II_repeat_pat_len',
+            
+            'SD_II_motif_pos',
+            
             
             #SD_direct_substitution
-            'SD_direct_substitution','SD_DS_mutant_pattern','SD_DS_P2','SD_DS_MH2',
-            'SD_DS_repeat_pat','SD_DS_repeat_pat_len','SD_DS_dist_between_reps','SD_DS_last_dimer',
-            'SD_DS_motif_pos','SD_DS_motif_freq_small','SD_DS_motif_freq_large',
+            'SD_direct_substitution',
             
+            'SD_DS_repeat_pat_len',
+            
+            'SD_DS_motif_pos',
+                        
             #SD_inverted_substitution
-            'SD_inverted_substitution','SD_IS_mutant_pattern','SD_IS_Prevc','SD_IS_MHrevc',
-            'SD_IS_repeat_pat','SD_IS_repeat_pat_len','SD_IS_dist_between_reps','SD_IS_last_dimer',
-            'SD_IS_motif_pos','SD_IS_motif_freq_small','SD_IS_motif_freq_large',
+            'SD_inverted_substitution',
+            #'SD_IS_mutant_pattern','SD_IS_Prevc','SD_IS_MHrevc',
+            #'SD_IS_repeat_pat',
+            'SD_IS_repeat_pat_len',
+            #'SD_IS_dist_between_reps','SD_IS_last_dimer',
+            'SD_IS_motif_pos',
+            #'SD_IS_motif_freq_small','SD_IS_motif_freq_large',
                                
             # polymerase slippage
             'pol_slip', 'pol_slip_submotif', 'pol_slippage_repeatsIndel',
@@ -473,7 +484,7 @@ for c in col_to_save: #se una colonna non viene creato, come nel caso di plo_sli
     if c not in df.columns:
         df[c] = False
 
-df.loc[:,'del_mmej'].fillna(value=False, inplace=True)
+df.loc[:,'MMEJ'].fillna(value=False, inplace=True)
 df.loc[:,'SD_inverted_insertion'].fillna(value=False, inplace=True)
 df.loc[:,'SD_direct_insertion'].fillna(value=False, inplace=True)
 df.loc[:,'pol_slip'].fillna(value=False, inplace=True)

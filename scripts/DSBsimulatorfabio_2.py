@@ -419,10 +419,10 @@ def fa2SD_direct_insertion(refFA,chrom,pos,MH_length,SD_motif_length,max_distanc
     seq_window=refFA.fetch(chrom,pos+SD_motif_length+pre_SD_length,pos+max_distance-1)
     seq_window_fabio=refFA.fetch(chrom,pos-MH_length,pos+max_distance - 1)
     Y_lenght=seq_window.find(MH_seq) #=position of MH from 1°SD to seq window
-    #print("seq window from 1° MH: "+seq_window_fabio)
-    #print("MH seq: "+MH_seq)
-    #print("SD motif: "+SD_motif)
-    #print("distance between 1°SD and 2° MH,spacer seq - Y:  "+str(Y_lenght))
+    print("seq window from 1° MH: "+seq_window_fabio)
+    print("MH seq: "+MH_seq)
+    print("SD motif: "+SD_motif)
+    print("distance between 1°SD and 2° MH,spacer seq - Y:  "+str(Y_lenght))
     #the 1° MH is always at 0 pos in seq_window_fabio
     if Y_lenght < 0:
         print("no MH possible in range")
