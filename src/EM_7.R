@@ -939,7 +939,7 @@ if (sys.nframe() == 0) {
   # all'ultima iterazione. Il nome del file è derivato da output_file
   # aggiungendo un suffisso, così non serve un nuovo argomento CLI.
 
-  last_iter_file <- paste0(output_file, "_last_iter")
+  last_iter_file <- paste0(output_file, "_paramaters_estimated")
   last_iter <- tail(em_out$history, 1)
 
   cat("Scrittura della history...\n")

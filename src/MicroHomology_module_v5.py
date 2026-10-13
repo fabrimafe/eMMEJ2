@@ -1549,12 +1549,11 @@ class emMEJrealignment:
             
             #SD_inverted_substitution
              'SD_inverted_substitution',
-             #'SD_IS_mutant_pattern','SD_IS_Prevc','SD_IS_MHrevc',
-             #'SD_IS_repeat_pat',
+            
              'SD_IS_repeat_pat_len',
-             #'SD_IS_dist_between_reps','SD_IS_last_dimer',
+             
              'SD_IS_motif_pos',
-             #'SD_IS_motif_freq_small','SD_IS_motif_freq_large'                         
+                                      
             # polymerase slippage
             #'pol_slip' , 'pol_slip_submotif' , 'pol_slippage_repeatsIndel',
             #'pol_slippage_repeatsDownstream', 'pos_slip_pos'
@@ -1611,201 +1610,33 @@ class emMEJrealignment:
         d = {**self.del_out_dict, 
             **self.snap_out_dict, **self.loop_out_dict, **self.pol_slip_dict}
         if self.include_context: d = {**d, **self.context}
-         
+        """ 
         # setting the right values to match corresponding columns
         for k, v in d.items():
             if isinstance(v, (list, tuple)) and len(v) == 1:
                 v = v[0]
             ex_df.at[0, k] = v
         return ex_df
-        
         """
-        ex_df.loc[0,[key for key in d.keys()]] = np.array([val for val in d.values()], dtype=object)
+        def _flatten(x):
+            #Appiattisce liste/tuple/set/array annidati in una lista piatta
+            if isinstance(x, (list, tuple, set, np.ndarray, pd.Series)):
+                out = []
+                for i in x:
+                    out.extend(_flatten(i))
+                return out
+            return [x]
+
+            # setting the right values to match corresponding columns
+        for k, v in d.items():
+            if k == "SD_DD_motif_pos" and isinstance(v, (list, tuple)):
+                # un gruppo per ogni mhl, separati da ";"  ->  "12,15,30;8,12"
+                v = ";".join(",".join(map(str, _flatten(g))) for g in v)
+            else:
+                if isinstance(v, (list, tuple)) and len(v) == 1:
+                    v = v[0]
+                if isinstance(v, (list, tuple, set, np.ndarray, pd.Series)):
+                    v = ",".join(map(str, _flatten(v)))
+
+            ex_df.at[0, k] = v
         return ex_df
-        
-        keys = list(d.keys())
-        vals = np.empty(len(keys), dtype=object)
-        for i, k in enumerate(keys):
-            vals[i] = d[k]
-        ex_df.loc[0, keys] = vals
-        """
-    # The function below are functions the generate a representation
-    # of the different patterns per repair mechanism
-
-    # Deletion MMEJ
-    def del_mutant_mmej_marked(self, mmej_cand: str):
-        """
-        Create string that represent the mutated genome after MMEJ. 
-        The pattern of an MMEJ that results in a deletion is:
-        upstream seq -> MMEJ -> DSB -> DSB to MMEJ -> downstream seq
-        Args:
-            mmej_cand (str): the MMEJ pattern
-        Returns:
-            The pattern as a string: upstream_seq (10 bp) * MH * downstream_seq (10bp)
-        """
-        if self.flip:
-            return f'{self.DSB_down[0:10][::-1]}*[{mmej_cand[::-1]}]*{self.DSB_up[(len(self.DSB_up)-len(mmej_cand)-10):(len(self.DSB_up)-len(mmej_cand))][::-1]}'
-        return f'{self.DSB_up[(len(self.DSB_up)-len(mmej_cand)-10):(len(self.DSB_up)-len(mmej_cand))]}*[{mmej_cand}]*{self.DSB_down[0:10]}'
-
-    def del_mmej_marked_on_reference(self, mmej_cand: str,
-                                       mmej_cand_position: int ):
-        """
-        Create string that represent the reference genome before MMEJ:
-        upstream seq -> MMEJ -> DSB -> DSB to MMEJ -> MMEJ -> downstream seq 
-        Args:
-            mmej_cand (str): thr MMEJ pattern
-            mmej_cand_position (int): the position of the MMEJ seq 
-                relative to the DSB
-        Returns:
-            The pattern as a string: upstream_seq (10 bp) * MH *|* downstream_seq (10bp)
-        """
-        before_DSB = f'{self.ref_genome_up[(len(self.ref_genome_up)-len(mmej_cand) -10):(len(self.ref_genome_up)-len(mmej_cand))]}*[{mmej_cand}]*|'
-        DSB_to_MMEJ_seq = f'{self.ref_genome_down[0:(mmej_cand_position-len(mmej_cand)-1)]}'
-        # print(mmej_cand_position, mmej_cand) 
-        MMEJ_till_end = self.ref_genome_down[(mmej_cand_position-1):(mmej_cand_position+10)]
-        if self.flip:
-            before_DSB = f'*[{mmej_cand[::-1]}]*{self.ref_genome_up[(len(self.ref_genome_up)-len(mmej_cand) -10):(len(self.ref_genome_up)-len(mmej_cand))][::-1]}'
-            return f'{MMEJ_till_end[::-1]}|*[{mmej_cand[::-1]}]*{DSB_to_MMEJ_seq[::-1]}{before_DSB}'
-        return f'{before_DSB}{DSB_to_MMEJ_seq}*[{mmej_cand}]*{MMEJ_till_end}'
-
-
-    # Insertion (SD-Snap back) MMEJ
-    def snap_mutant_pattern_generator(self, P1:str, P2: str, MH1:str, MH2: str,
-                                 rep_pat:str):
-        """
-        Create the pattern that should match the reference sequence in
-        cases where SD-Snap back is possible, the pattern is:
-        [MH2->INS->P2] -> random seq -> invert_and_complement([MH2->INS->P2])
-        Args:
-            P1, P2, MH1, MH2 (str): parts of the pattern as shown in fig.1A from:
-            Khodaverdian, V. Y. et al. Secondary structure forming sequences drive SD-MMEJ 
-            repair of DNA double-strand breaks. Nucleic Acids Res. 45, 12848–12861 (2017).
-            rep_pat (str): the following pattern: [MH2->INS->P2]
-        Returns:
-            The pattern itself in format 10bpupstream*MH2*INS P2 randomseq*P1 INVINS MH1 10bpdownstream
-        """
-        
-        inv_ins = self.reverse_complement_converter(seq = self.INDEL)
-        rep_pat_pos = self.mutant_sequence[(self.indel_position+len(P2)):].index(rep_pat)
-        mmej_marked_rep_up = f'*MH1[{MH1}]|*INS[{self.INDEL}]P1[{P1}]'
-        mmej_marked_up = f'{self.mutant_sequence[(self.indel_position-len(MH2)-10):(self.indel_position-len(MH2))]}{mmej_marked_rep_up}'
-        mmej_marked_rep_down = f'*P2[{P2}][{inv_ins}]MH2[{MH2}]{self.DSB_down[(rep_pat_pos+len(rep_pat)+len(P2)):(rep_pat_pos+len(rep_pat)+len(P2)+10)]}'
-        mmej_marked_inter_reps_seq = f'{self.DSB_down[(len(P2) + self.indel_length):(len(P2) + rep_pat_pos)]}'
-
-        return f'{mmej_marked_up}{mmej_marked_inter_reps_seq}{mmej_marked_rep_down}'
-
-    # Insertion (SD-Loop out) MMEJ
-    def loop_mutant_pattern_generator(self, P2: str, MH2: str,
-                                 rep_pat:str):
-        """
-        Create the pattern that should match the reference sequence in
-        cases where SD-Snap back is possible, the pattern is:
-        [MH2->INS->P2] -> random seq -> [MH2->INS->P2]
-        Args:
-            P2, MH2 (str):parts of the pattern as shown in fig.1A from:
-            Khodaverdian, V. Y. et al. Secondary structure forming sequences drive SD-MMEJ 
-            repair of DNA double-strand breaks. Nucleic Acids Res. 45, 12848–12861 (2017).
-            rep_pat (str): the following pattern: [MH2->INS->P2]
-        Returns:
-            The mutant genomic context.
-        """
-        
-        rep_pat_pos = self.mutant_sequence[(self.indel_position+len(P2)):].index(rep_pat)
-        mmej_marked_rep_up = f'*MH1[{MH2}]|*INS[{self.INDEL}]P1[{P2}]'
-        mmej_marked_up = f'{self.mutant_sequence[(self.indel_position-len(MH2)-10):(self.indel_position-len(MH2))]}{mmej_marked_rep_up}'
-        mmej_marked_rep_down = f'*MH2[{MH2}][{self.INDEL}]P2[{P2}]{self.DSB_down[(rep_pat_pos+len(rep_pat)+len(P2)):(rep_pat_pos+len(rep_pat)+len(P2)+10)]}'
-        mmej_marked_inter_reps_seq = f'{self.DSB_down[(len(P2) + self.indel_length):(len(P2) + rep_pat_pos)]}'
-
-        return f'{mmej_marked_up}{mmej_marked_inter_reps_seq}{mmej_marked_rep_down}'
-    
-    # fabio:for sd_direct_deletions
-    def direct_deletions_mutant_pattern_generator(self, P2: str, MH2: str,
-                                 rep_pat:str):
-        """
-        Create the MUTATED pattern that should occurs when a SD_direct_deletion acts, match the reference sequence in
-        cases where SD-Snap back is possible, the pattern is:
-        [MH1-DELETED-P2] -> random seq -> [MH2->P2]
-        Args:
-            P2, MH2 (str):parts of the pattern as shown in fabio's drawings 
-            Returns:
-            The mutant genomic context.
-        """
- 
-        rep_pat_pos_2 = self.mutant_sequence[
-                    (self.indel_position + len(self.INDEL) + len (P2)):].index(rep_pat)
-        
-        rep_pat_pos = self.mutant_sequence[(self.indel_position+len(P2)):].index(rep_pat)
-        mmej_marked_rep_up = f'*MH1[{MH2}]|[DELETION]|P1[{P2}]'
-        mmej_marked_up = f'{self.mutant_sequence[(self.indel_position-len(MH2)-10):(self.indel_position-len(MH2))]}{mmej_marked_rep_up}'
-        mmej_marked_rep_down = f'*MH2[{MH2}]|P2[{P2}]{self.DSB_down[(rep_pat_pos+len(rep_pat)+len(P2)):(rep_pat_pos+len(rep_pat)+len(P2)+10)]}'
-        #mmej_marked_inter_reps_seq = f'{self.DSB_down[(len(P2) + self.indel_length):(len(P2) + rep_pat_pos)]}'
-
-        mmej_marked_inter_reps_seq_2 = f'{self.DSB_down[len(P2) + self.indel_length:(len(P2) + self.indel_length + rep_pat_pos_2)]}'
-       
-        return f'{mmej_marked_up}{mmej_marked_inter_reps_seq_2}{mmej_marked_rep_down}'
-    def inverted_deletions_mutant_pattern_generator(self, P1: str, MH1: str,
-                                 rep_pat:str):
-        """
-        Create the MUTATED pattern that should occurs when a SD_inverted_deletion acts, match the reference sequence in
-        cases where SD-Snap back is possible, the pattern is:
-        [MH1-DELETED-P1] -> random seq -> [MH2->P2] (MH2->P2 are the reverse complement of MH1 and P1)
-        Args:
-            P2, MH2 (str):parts of the pattern as shown in fabio's drawings 
-            rep_pat: the pattern founded = [MH2->P2]
-            Returns:
-            The mutant genomic context.
-        """
- 
-        P2revc = self.reverse_complement_converter(seq = P1)
-        MH2revc = self.reverse_complement_converter(seq = MH1)
-        rep_pat_pos_2 = self.mutant_sequence[
-                    (self.indel_position + len(self.INDEL) + len (P1)):].index(rep_pat)
-        
-        rep_pat_pos = self.mutant_sequence[(self.indel_position+len(P1)):].index(rep_pat)
-        mmej_marked_rep_up = f'*MH1[{MH1}]|[DELETION]|P1[{P1}]'
-        mmej_marked_up = f'{self.mutant_sequence[(self.indel_position-len(MH1)-10):(self.indel_position-len(MH1))]}{mmej_marked_rep_up}'
-        mmej_marked_rep_down = f'*P2revc[{P2revc}]|MH2revc[{MH2revc}]{self.DSB_down[(rep_pat_pos+len(rep_pat)+len(P1)):(rep_pat_pos+len(rep_pat)+len(P1)+10)]}'
-        #mmej_marked_inter_reps_seq = f'{self.DSB_down[(len(P2) + self.indel_length):(len(P2) + rep_pat_pos)]}'
-
-        mmej_marked_inter_reps_seq_2 = f'{self.DSB_down[len(P1) + self.indel_length:(len(P1) + self.indel_length + rep_pat_pos_2)]}'
-       
-        return f'{mmej_marked_up}{mmej_marked_inter_reps_seq_2}{mmej_marked_rep_down}'
-
-    def direct_substitution_mutant_pattern_generator(self, P2: str, MH2: str, rep_pat:str):
-    
-        rep_pat_pos = self.mutant_sequence[(self.indel_position+len(P2)):].index(rep_pat)
-        mmej_marked_rep_up = f'*MH1[{MH2}]|*Z_SEQ[{self.INDEL}]P1[{P2}]'
-        mmej_marked_up = f'{self.mutant_sequence[(self.indel_position-len(MH2)-10):(self.indel_position-len(MH2))]}{mmej_marked_rep_up}'
-        mmej_marked_rep_down = f'*MH2[{MH2}]*Z_SEQ [{self.INDEL}]P2[{P2}]{self.DSB_down[(rep_pat_pos+len(rep_pat)+len(P2)):(rep_pat_pos+len(rep_pat)+len(P2)+10)]}'
-        mmej_marked_inter_reps_seq = f'{self.DSB_down[(len(self.DER))+ len(P2) : (len(self.DER))+ len(P2) + rep_pat_pos]}'
-
-
-        return f'{mmej_marked_up}{mmej_marked_inter_reps_seq}{mmej_marked_rep_down}'
-
-    def inverted_substitution_mutant_pattern_generator(self, P1: str, MH1: str,
-            rep_pat:str):
-
-        """
-        Create the MUTATED pattern that should occurs when a SD_inverted_substitution acts, match the reference sequence in
-        cases where SD-Snap back is possible, the pattern is:
-        [MH1-Z-REVC-P1] -> random seq -> [MH2->Z_SEQ->P2] (MH2->P2 are the reverse complement of MH1 and P1)
-        Args:
-            P2, MH2 (str):parts of the pattern as shown in fabio's drawings
-            rep_pat: the pattern founded = [MH2->Zrevc->P2]
-            Returns:
-            The mutant genomic context.
-        """
-
-        P2revc = self.reverse_complement_converter(seq = P1)
-        MH2revc = self.reverse_complement_converter(seq = MH1)
-        rep_pat_pos_2 = self.mutant_sequence[
-                (self.indel_position + len(self.INDEL) + len (P1)):].index(rep_pat)
-        Z_seq = self.reverse_complement_converter(seq = self.INDEL)
-        
-        rep_pat_pos = self.mutant_sequence[(self.indel_position+len(P1)):].index(rep_pat)
-        mmej_marked_rep_up = f'*MH1[{MH1}]|*Z_REVC[{self.INDEL}]P1[{P1}]'
-        mmej_marked_up = f'{self.mutant_sequence[(self.indel_position-len(MH1)-10):(self.indel_position-len(MH1))]}{mmej_marked_rep_up}'
-        mmej_marked_rep_down = f'*P2revc[{P2revc}]Z_SEQ[{Z_seq}]MH2revc[{MH2revc}]{self.DSB_down[(rep_pat_pos+len(rep_pat)+len(P1)):(rep_pat_pos+len(rep_pat)+len(P1)+10)]}'
-        mmej_marked_inter_reps_seq_2 = f'{self.DSB_down[len(P1) + self.indel_length:(len(P1) + self.indel_length + rep_pat_pos_2)]}'
-
-        return f'{mmej_marked_up}{mmej_marked_inter_reps_seq_2}{mmej_marked_rep_down}'

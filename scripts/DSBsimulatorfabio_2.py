@@ -806,7 +806,17 @@ xX_length=args['X_length']
 
 refFA=FastaFile(fastafile)
 
+# dopo refFA=FastaFile(fastafile)
+MIN_CONTIG_LEN = 10000   # soglia da scegliere (>= 2*2000 + margine per il meccanismo)
 
+valid_contigs = [(c, l) for c, l in zip(refFA.references, refFA.lengths)
+                 if l >= MIN_CONTIG_LEN]
+if not valid_contigs:
+    raise ValueError(f"no contig had >= {MIN_CONTIG_LEN} bp in refa")
+
+valid_names   = [c for c, l in valid_contigs]
+valid_lengths = [l for c, l in valid_contigs]
+valid_len_dict = dict(valid_contigs)
 
 counter_sims=0
 myvcf=list()
@@ -814,11 +824,13 @@ seen_ids=set()
 
 while len(myvcf)<nsims:
     if (chrom==None):
-        xchr=random.choices(refFA.references,weights=refFA.lengths,k=1)[0]
+        xchr = random.choices(valid_names, weights=valid_lengths, k=1)[0]
+        #xchr=random.choices(refFA.references,weights=refFA.lengths,k=1)[0]
     else:
         xchr=chrom
     if (pos==None):
-        xpos=random.sample(range(2000,refFA.lengths[refFA.references.index(xchr)]-2000),1)[0]
+        xpos = random.randint(2000, valid_len_dict[xchr] - 2000 - 1)
+        #xpos=random.sample(range(2000,refFA.lengths[refFA.references.index(xchr)]-2000),1)[0]
     else:
         xpos=int(pos)
     #print("create indel")
