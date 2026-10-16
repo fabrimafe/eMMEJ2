@@ -45,7 +45,7 @@ all_args.add_argument("-w", "--windowsize", required=False,
       help="size (in bp) of the context window (int)")
 
 # optional arguments, turned on by using the flag
-all_args.add_argument("-mhl", "--MH_lengths", required=False ,default=2, 
+all_args.add_argument("-mhl", "--MH_lengths", required=False ,default="2", 
       help="a flag that specify the specific MH length that one wants to analyze, default is all MH lengths")
 all_args.add_argument("-cr", "--CRISPR", required=False, action='store_true',default=False, 
       help="a flag to indicate if the algorithm performes on CRISPR data")
@@ -427,52 +427,60 @@ df['observed'] = (df['POS'] == df['variant_id'].str.split('_').str[1].astype(int
 col_to_save = ['CHR', 'POS','variant_id', #'REF','ALT',
             'ANC','DER','alignment_ID','direction', 'indel_type', 'indel_len', 'observed', 
             # deletions
-            'MMEJ', 'MMEJ_motif_len',
-                     
+            'MMEJ',
+            'MMEJ_motif_len',
+            'MMEJ_motif',
+
+            #Direct_template
+            'Direct_Template',
+            'DT_indel_pos',
+             
+            #Inverted_template
+            'Inverted_Template',
+            'IT_indel_pos',
+
             #SD-direct_deletion
-            'SD_direct_deletion',
-            
-            'SD_DD_repeat_pat_len',
-            
-            'SD_DD_motif_pos',
+            'Direct_Deletion', 
+            'DD_rep_pat_len',
+            'DD_rep_pat',            
+            'DD_motif_pos',
+
                         
             # SD_inverted_deletions
-            'SD_inverted_deletion',
+            'Inverted_Deletion',
 
-            'SD_ID_repeat_pat_len',
+            'ID_rep_pat_len',
+            'ID_rep_pat',
             
-            'SD_ID_motif_pos',
+            'ID_motif_pos',
             
             # SD_direct_insertion
-            'SD_direct_insertion',
-            
-            'SD_DI_repeat_pat_len',
-            
-            'SD_DI_motif_pos',
+            'Direct_Insertion',
+            'DI_rep_pat_len',
+            'DI_rep_pat',
+            'DI_motif_pos',
            
             #SD_inverted_insertion
-            'SD_inverted_insertion',
-            
-            'SD_II_repeat_pat_len',
-            
-            'SD_II_motif_pos',
+            'Inverted_Insertion',            
+            'II_rep_pat_len',
+            'II_rep_pat',
+            'II_motif_pos',
             
             
             #SD_direct_substitution
-            'SD_direct_substitution',
+            'Direct_Substitution',
             
-            'SD_DS_repeat_pat_len',
+            'DS_rep_pat_len',
+            'DS_rep_pat',
             
-            'SD_DS_motif_pos',
+            'DS_motif_pos',
                         
             #SD_inverted_substitution
-            'SD_inverted_substitution',
-            #'SD_IS_mutant_pattern','SD_IS_Prevc','SD_IS_MHrevc',
-            #'SD_IS_repeat_pat',
-            'SD_IS_repeat_pat_len',
-            #'SD_IS_dist_between_reps','SD_IS_last_dimer',
-            'SD_IS_motif_pos',
-            #'SD_IS_motif_freq_small','SD_IS_motif_freq_large',
+            'Inverted_Substitution',
+            'IS_rep_pat_len',
+            'IS_rep_pat',
+            'IS_motif_pos',
+            
                                
             # polymerase slippage
             'pol_slip', 'pol_slip_submotif', 'pol_slippage_repeatsIndel',
@@ -485,11 +493,11 @@ for c in col_to_save: #se una colonna non viene creato, come nel caso di plo_sli
         df[c] = False
 
 df.loc[:,'MMEJ'].fillna(value=False, inplace=True)
-df.loc[:,'SD_inverted_insertion'].fillna(value=False, inplace=True)
-df.loc[:,'SD_direct_insertion'].fillna(value=False, inplace=True)
+df.loc[:,'Inverted_Insertion'].fillna(value=False, inplace=True)
+df.loc[:,'Direct_Insertion'].fillna(value=False, inplace=True)
 df.loc[:,'pol_slip'].fillna(value=False, inplace=True)
-df.loc[:,'SD_direct_deletion'].fillna(value=False, inplace=True)
-df.loc[:,'SD_inverted_deletion'].fillna(value=False, inplace=True)
-df.loc[:,'SD_direct_substitution'].fillna(value=False, inplace=True)
-df.loc[:,'SD_inverted_substitution'].fillna(value=False, inplace=True)
+df.loc[:,'Direct_Deletion'].fillna(value=False, inplace=True)
+df.loc[:,'Inverted_Deletion'].fillna(value=False, inplace=True)
+df.loc[:,'Direct_Substitution'].fillna(value=False, inplace=True)
+df.loc[:,'Inverted_Substitution'].fillna(value=False, inplace=True)
 df.loc[:, col_to_save].to_csv(f"{args['outputfile']}", sep='\t', index=False)

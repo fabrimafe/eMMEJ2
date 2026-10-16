@@ -232,6 +232,8 @@ class emMEJrealignment:
             self.sd_snap_back_MMEJ()
             self.sd_direct_insertions()
             self.pol_slip(xINDEL=self.INDEL)
+            self.direct_template()
+            self.inverted_template()
 
         if self.indel_type == 'DEL': 
             self.deletion_MMEJ()
@@ -245,7 +247,7 @@ class emMEJrealignment:
 
     def deletion_MMEJ(self):
     
-        MMEJ_motif_found,MMEJ_motif_len = list(), list()
+        MMEJ_motif,MMEJ_motif_found,MMEJ_motif_len = list(),list(), list()
 
         ###1st step is to bring MH1 and P1 from the ref seq 
         for MH_lengths in self.MH_lengths:
@@ -275,18 +277,21 @@ class emMEJrealignment:
                     print(self.windowsize)
                     for MH_lengths in self.MH_lengths:
                         search_window = self.INDEL
-                        found, length = MMEJ_found(MH, search_window)
+                        found, length, motif = MMEJ_found(MH, search_window)
 
     
 
                     MMEJ_motif_found.append(found)
-
+                    
+                    MMEJ_motif.append(motif)
+                    
                     MMEJ_motif_len.append(length)
                     
 
                     _d = {
                         'MMEJ': MMEJ_motif_found,
-                        'MMEJ_motif_len': MMEJ_motif_len
+                        'MMEJ_motif_len': MMEJ_motif_len,
+                        'MMEJ_motif': MMEJ_motif
                         }
         
                     self.del_out_dict = _d
@@ -309,14 +314,56 @@ class emMEJrealignment:
                                     break
 
                         print("MH esteso(MMEJ): " + MH)
-                        found, length = MMEJ_found(MH, window)
+                        found, length, motif = MMEJ_found(MH, window)
                         MMEJ_motif_found.append(found)
                         MMEJ_motif_len.append(length)
+                        MMEJ_motif.append(motif)
 
                     self.del_out_dict = {
                         'MMEJ': MMEJ_motif_found,
                         'MMEJ_motif_len': MMEJ_motif_len,
+                        'MMEJ_motif': MMEJ_motif
                         }
+
+    def direct_template(self):
+        
+        DT_motif_pos_3, DT_motif_found = list(), list()
+
+        indel=self.INDEL
+        up_start = 0
+        down_start = 0
+        
+        pos=get_motifs_pos_3(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=indel,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
+
+        DT_motif_pos_3.append(pos)
+        DT_motif_found.append(len(pos) > 0)
+                        
+        _d = {
+             'Direct_Template': DT_motif_found,
+             'DT_indel_pos' :DT_motif_pos_3
+              }
+        self.loop_out_dict = _d
+            
+    def inverted_template(self):
+
+        IT_motif_pos_3, IT_motif_found  = list(), list()
+
+        indel_revc = self.reverse_complement_converter(seq = self.INDEL)
+        
+        up_start = 0
+        down_start = 0
+        
+        pos=get_motifs_pos_3(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=indel_revc,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
+
+        IT_motif_pos_3.append(pos)
+        IT_motif_found.append(len(pos) > 0)
+                        
+        _d = {
+             'Inverted_Template': IT_motif_found,
+             'IT_indel_pos' :IT_motif_pos_3
+              }
+        self.snap_out_dict = _d
+
 
     def pol_slip(self,xINDEL):
 
@@ -386,7 +433,7 @@ class emMEJrealignment:
                        P1_2 is P with max extension
         """
         #creating lists
-        rep_pat_len, rep_pat_2, ID_motif_found, SD_ID_motif_pos_3, SD_ID_motif_freq_large, SD_ID_motif_freq_small = list(), list(), list(), list(), list(), list()               
+        ID_rep_pat_len, ID_rep_pat_2, ID_motif_found, ID_motif_pos_3 = list(), list(), list(), list()               
         ###1st step is to bring MH1 and P1 from the ref seq, define them and create the revc
         for MH_lengths in self.MH_lengths:
             MH1 = self.ref_genome_up [ - MH_lengths :]  
@@ -444,18 +491,18 @@ class emMEJrealignment:
                     for MH_lengths in self.MH_lengths:
                         pos=get_motifs_pos_3(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=rep_pat,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
 
-                    SD_ID_motif_pos_3.append(pos)
+                    
+                    ID_motif_pos_3.append(pos)
                     ID_motif_found.append(len(pos) > 0)
-                    #rep_pat_2.append(rep_pat)
-                    rep_pat_len.append(len(rep_pat))
+                    ID_rep_pat_2.append(rep_pat)
+                    ID_rep_pat_len.append(len(rep_pat))
 
                     # setting output dict
                     _d = {
-                        'SD_inverted_deletion': ID_motif_found,
-                        
-                        'SD_ID_repeat_pat_len':rep_pat_len,
-                        
-                        'SD_ID_motif_pos' : SD_ID_motif_pos_3,
+                        'Inverted_Deletion': ID_motif_found,
+                        'ID_rep_pat_len':ID_rep_pat_len,
+                        'ID_rep_pat':ID_rep_pat_2,
+                        'ID_motif_pos' : ID_motif_pos_3,
                         }
                     self.snap_out_dict = _d
                     
@@ -541,16 +588,18 @@ class emMEJrealignment:
                     for MH_lengths in self.MH_lengths:
                           pos=get_motifs_pos_3(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=rep_pat,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
 
-                    SD_ID_motif_pos_3.append(pos)
+                    ID_motif_pos_3.append(pos)
                     ID_motif_found.append(len(pos) > 0)
-                    #rep_pat_2.append(rep_pat)
-                    rep_pat_len.append(len(rep_pat))
+                    ID_rep_pat_2.append(rep_pat)
+                    
+                    ID_rep_pat_len.append(len(rep_pat))
   
                     # setting output dict
                     _d = {
-                        'SD_inverted_deletion': ID_motif_found,
-                        'SD_ID_repeat_pat_len':rep_pat_len,
-                        'SD_ID_motif_pos' : SD_ID_motif_pos_3,
+                        'Inverted_Deletion': ID_motif_found,
+                        'ID_rep_pat_len': ID_rep_pat_len,
+                        'ID_rep_pat': ID_rep_pat_2,
+                        'ID_motif_pos' : ID_motif_pos_3,
                          }
                     self.snap_out_dict = _d
                               
@@ -583,7 +632,8 @@ class emMEJrealignment:
 
             
         """
-        SD_II_last_dimer,rep_pat_len,rep_pat_2, II_motif_found,SD_II_motif_pos_3, SD_II_motif_freq_large, SD_II_motif_freq_small = list(), list(),list(),list(),list(), list(), list()       #creation of the lists               
+        II_rep_pat, II_rep_pat_len, II_motif_found, II_motif_pos_3 = list(),list(), list(), list()       #creation of the lists               
+
         
         ###1st step is to bring MH1 and P1 from the ref seq 
         for MH_lengths in self.MH_lengths:
@@ -642,17 +692,19 @@ class emMEJrealignment:
                     for MH_lengths in self.MH_lengths:
                         pos=get_motifs_pos_3(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=rep_pat,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
 
-                    SD_II_motif_pos_3.append(pos)
+                    II_motif_pos_3.append(pos)
+                    II_rep_pat.append(rep_pat)
                     
                     II_motif_found.append(len(pos) > 0)
                     
-                    rep_pat_len.append(len(rep_pat) - len(self.INDEL))
+                    II_rep_pat_len.append(len(rep_pat) - len(self.INDEL))
                                           
                       # setting output dict
                     _d = {
-                          'SD_inverted_insertion': II_motif_found,
-                          'SD_II_repeat_pat_len':rep_pat_len,
-                          'SD_II_motif_pos' : SD_II_motif_pos_3,
+                          'Inverted_Insertion': II_motif_found,
+                          'II_rep_pat':II_rep_pat,
+                          'II_rep_pat_len':II_rep_pat_len,
+                          'II_motif_pos' : II_motif_pos_3,
                            }
                     self.snap_out_dict = _d
 
@@ -740,17 +792,20 @@ class emMEJrealignment:
                     for MH_lengths in self.MH_lengths:
                       pos=get_motifs_pos_3(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=rep_pat,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
 
-                    SD_II_motif_pos_3.append(pos)
+                    II_motif_pos_3.append(pos)
                     
                     II_motif_found.append(len(pos) > 0)
                     
-                    rep_pat_len.append(len(rep_pat) - len(self.INDEL))
+                    II_rep_pat_len.append(len(rep_pat) - len(self.INDEL))
+                    II_rep_pat.append(rep_pat)
+
                     _d = {
-                       'SD_inverted_insertion': II_motif_found,
+                       'Inverted_Insertion': II_motif_found,
                        
-                       'SD_II_repeat_pat_len': rep_pat_len,
+                       'II_rep_pat_len': II_rep_pat_len,
+                       'II_rep_pat': II_rep_pat,
                        
-                       'SD_II_motif_pos' : SD_II_motif_pos_3,
+                       'II_motif_pos' : II_motif_pos_3,
                         }
                     self.snap_out_dict = _d
 
@@ -783,7 +838,7 @@ class emMEJrealignment:
        
             
         """  
-        rep_pat_len,rep_pat_2, DD_motif_found, SD_DD_motif_pos_3, SD_DD_motif_freq_large, SD_DD_motif_freq_small = list(), list(), list(), list(), list(), list()               
+        DD_rep_pat_len, DD_rep_pat_2, DD_motif_found, DD_motif_pos_3 = list(), list(), list(), list()               
         ###1st step is to bring MH1 and P1 from the ref seq 
         for MH_lengths in self.MH_lengths:
             MH1 = self.ref_genome_up [ - MH_lengths :]  
@@ -832,17 +887,17 @@ class emMEJrealignment:
                     for MH_lengths in self.MH_lengths:
                         pos=get_motifs_pos_3(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=rep_pat,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
                     
-                    SD_DD_motif_pos_3.append(pos)
-                   
+                    DD_motif_pos_3.append(pos)
                     DD_motif_found.append(len(pos) > 0)
-                   
-                    rep_pat_len.append(len(rep_pat))
+                    DD_rep_pat_2.append(rep_pat)
+                    DD_rep_pat_len.append(len(rep_pat))
 
 
                     _d = {
-                        'SD_direct_deletion':DD_motif_found,
-                        'SD_DD_repeat_pat_len': rep_pat_len,                        
-                        'SD_DD_motif_pos' : SD_DD_motif_pos_3,
+                        'Direct_Deletion':DD_motif_found,
+                        'DD_rep_pat_len': DD_rep_pat_len,
+                        'DD_rep_pat':DD_rep_pat_2,
+                        'DD_motif_pos' : DD_motif_pos_3,
                         }
                     self.loop_out_dict = _d
 
@@ -908,15 +963,16 @@ class emMEJrealignment:
                     for MH_lengths in self.MH_lengths:
                         pos=get_motifs_pos_3(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=rep_pat,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
 
-                    SD_DD_motif_pos_3.append(pos)
+                    DD_motif_pos_3.append(pos)
                     DD_motif_found.append(len(pos) > 0)
-                    #rep_pat_2.append(rep_pat)
-                    rep_pat_len.append(len(rep_pat))
+                    DD_rep_pat_2.append(rep_pat)
+                    DD_rep_pat_len.append(len(rep_pat))
               
                     _d = {
-                        'SD_direct_deletion': DD_motif_found,
-                        'SD_DD_repeat_pat_len':rep_pat_len,
-                        'SD_DD_motif_pos' : SD_DD_motif_pos_3
+                        'Direct_Deletion': DD_motif_found,
+                        'DD_rep_pat_len':DD_rep_pat_len,
+                        'DD_motif_pos' :DD_motif_pos_3,
+                        'DD_rep_pat':DD_rep_pat_2
                            }
                     self.loop_out_dict = _d
             
@@ -941,7 +997,7 @@ class emMEJrealignment:
                     
             
         """
-        rep_pat_len,rep_pat_2, DI_motif_found ,SD_DI_motif_pos_3, SD_DI_motif_freq_large, SD_DI_motif_freq_small = list(), list(), list(), list(), list(), list()
+        DI_rep_pat_len, DI_rep_pat_2, DI_motif_found , DI_motif_pos_3 = list(), list(), list(), list()
 
         ###1st step is to bring MH1 and P1 from the ref seq 
         for MH_lengths in self.MH_lengths:
@@ -1000,17 +1056,18 @@ class emMEJrealignment:
                     for MH_lengths in self.MH_lengths:
                         pos=get_motifs_pos_3(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=rep_pat,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
 
-                    SD_DI_motif_pos_3.append(pos)
+                    DI_motif_pos_3.append(pos)
                     DI_motif_found.append(len(pos) > 0)
-                    #rep_pat_2.append(rep_pat)
-                    rep_pat_len.append(len(rep_pat)-len(self.INDEL))
+                    DI_rep_pat_2.append(rep_pat)
+                    DI_rep_pat_len.append(len(rep_pat)-len(self.INDEL))
 
                           
                     #setting output dict
                     _d = {
-                        'SD_direct_insertion': DI_motif_found, 
-                        'SD_DI_repeat_pat_len':rep_pat_len,
-                        'SD_DI_motif_pos': SD_DI_motif_pos_3
+                        'Direct_Insertion': DI_motif_found, 
+                        'DI_rep_pat_len': DI_rep_pat_len,
+                        'DI_rep_pat': DI_rep_pat_2,
+                        'DI_motif_pos': DI_motif_pos_3
                         }
                     self.loop_out_dict = _d 
                  
@@ -1065,27 +1122,7 @@ class emMEJrealignment:
 
                     #print("P1_2: " + P1_2)
                     #print("DI_pattern: " + DI_pattern)
-                    """
-                      # elongation of P2, confined in extention_space[:*starting position of MH2_2*]
-                      print("tmp_pos: "+str(tmp_pos))
-                      
-                      for i in range(1, tmp_pos):
-                          P1_1 = self.ref_genome_down[:( + MH_lengths + i)]
-                          MH1_2_indel_P1_1 = MH1_2 + self.INDEL + P1_1
-
-                          if MH1_2_indel_P1_1 in self.ref_genome_down [ len(P1):]:
-                              continue
-                          else:
-                              P1_2 = P1_1[:-1]
-                              #print("P1_2: "+P1_2)
-                              DI_pattern = MH1_2 + self.INDEL + P1_2
-                              #print("DI_pattern : "+ DI_pattern)
-                              break
-                      else:
-                          DI_pattern=MH1_2_indel_P1 #se P2 non viene allungato allora il BR rimane con R non allungato
-                          P1_2 = P1_1
-                    """
-                    
+                                        
                     rep_pat = DI_pattern
                     #print(self.pos_on_chr)
                     #print(MH1_2)
@@ -1101,16 +1138,17 @@ class emMEJrealignment:
                     for MH_lengths in self.MH_lengths:
                          pos=get_motifs_pos_3(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=rep_pat,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
 
-                    SD_DI_motif_pos_3.append(pos)
+                    DI_motif_pos_3.append(pos)
                     DI_motif_found.append(len(pos) > 0)
-                    #rep_pat_2.append(rep_pat)
-                    rep_pat_len.append(len(rep_pat) - len(self.INDEL))
+                    DI_rep_pat.append(rep_pat)
+                    DI_rep_pat_len.append(len(rep_pat) - len(self.INDEL))
 
                     #setting output dict
                     _d = {
-                        'SD_direct_insertion': DI_motif_found, 
-                        'SD_DI_repeat_pat_len':rep_pat_len,
-                        'SD_DI_motif_pos': SD_DI_motif_pos_3,
+                        'Direct_Insertion': DI_motif_found, 
+                        'DI_rep_pat': DI_rep_pat,
+                        'DI_rep_pat_len':DI_rep_pat_len,
+                        'DI_motif_pos': DI_motif_pos_3,
                         }
                     self.loop_out_dict = _d 
 
@@ -1121,7 +1159,7 @@ class emMEJrealignment:
         """
         """
 
-        rep_pat_len,rep_pat_2, DS_motif_found,SD_DS_motif_pos_3, SD_DS_motif_freq_large, SD_DS_motif_freq_small = list(), list(), list(), list(), list(), list()               
+        DS_rep_pat_len, DS_rep_pat, DS_motif_found, DS_motif_pos_3 = list(), list(), list(), list()               
         ###1st step is to bring MH1 and P1 from the ref seq 
         for MH_lengths in self.MH_lengths:
             MH1 = self.ref_genome_up [ - MH_lengths :]  
@@ -1181,19 +1219,20 @@ class emMEJrealignment:
                     for MH_lengths in self.MH_lengths:
                         pos=get_motifs_pos_3(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=rep_pat,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
 
-                    SD_DS_motif_pos_3.append(pos)
+                    DS_motif_pos_3.append(pos)
                     DS_motif_found.append(len(pos) > 0)
-                    #rep_pat_2.append(rep_pat)
-                    rep_pat_len.append(len(rep_pat) - len(self.INDEL))
+                    DS_rep_pat.append(rep_pat)
+                    DS_rep_pat_len.append(len(rep_pat) - len(self.INDEL))
 
                           
                     #setting output dict
                     _d = {
-                        'SD_direct_substitution': DS_motif_found, 
+                        'Direct_Substitution': DS_motif_found, 
                         
-                        'SD_DS_repeat_pat_len': rep_pat_len,
+                        'DS_rep_pat_len': DS_rep_pat_len,
+                        'DS_rep_pat': DS_rep_pat,
                         
-                        'SD_DS_motif_pos': SD_DS_motif_pos_3
+                        'DS_motif_pos': DS_motif_pos_3
                          }
                     self.loop_out_dict = _d 
                 
@@ -1258,18 +1297,19 @@ class emMEJrealignment:
                     for MH_lengths in self.MH_lengths:
                         pos=get_motifs_pos_3(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=rep_pat,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
 
-                    SD_DS_motif_pos_3.append(pos)
+                    DS_motif_pos_3.append(pos)
                     DS_motif_found.append(len(pos) > 0)
-                    #rep_pat_2.append(rep_pat)
-                    rep_pat_len.append(len(rep_pat) - len(self.INDEL))
+                    DS_rep_pat.append(rep_pat)
+                    DS_rep_pat_len.append(len(rep_pat) - len(self.INDEL))
                     
                     #setting output dict
                     _d = {
-                        'SD_direct_substitution': DS_motif_found, 
+                        'Direct_Substitution': DS_motif_found, 
                     
-                        'SD_DS_repeat_pat_len': rep_pat_len,
+                        'DS_rep_pat_len':  DS_rep_pat_len,
+                        'DS_rep_pat':  DS_rep_pat,
                         
-                        'SD_DS_motif_pos': SD_DS_motif_pos_3,
+                        'DS_motif_pos': DS_motif_pos_3,
                          }
                     self.loop_out_dict = _d 
 
@@ -1279,7 +1319,7 @@ class emMEJrealignment:
         """
         """
         
-        rep_pat_len, rep_pat_2, IS_motif_found, SD_IS_motif_pos_3, SD_IS_motif_freq_large, SD_IS_motif_freq_small = list(),list(),list(),list(), list(), list()               
+        IS_rep_pat_len, IS_rep_pat_2, IS_motif_found, IS_motif_pos_3 = list(),list(), list(), list()               
         ###1st step is to bring MH1 and P1 from the ref seq 
         for MH_lengths in self.MH_lengths:
             MH1 = self.ref_genome_up [ - MH_lengths :]  
@@ -1296,10 +1336,10 @@ class emMEJrealignment:
                 SD_inverted_substitution = True
             else:
                 SD_inverted_substitution = False 
-                print("RZBrevc not found")
+                #print("IS RZBrevc not found")
 
             if SD_inverted_substitution:
-                print("RZBrevc found")
+                #print("RZBrevc found")
                
                 if not self.extension:
                     #MH1/P1 = not extended, MH2/P2 = MH and P revc not extended 
@@ -1334,177 +1374,122 @@ class emMEJrealignment:
                     for MH_lengths in self.MH_lengths:
                         pos=get_motifs_pos_3(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=rep_pat,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
 
-                    SD_IS_motif_pos_3.append(pos)
+                    IS_motif_pos_3.append(pos)
                     IS_motif_found.append(len(pos) > 0)
-                    #rep_pat_2.append(rep_pat)
-                    rep_pat_len.append(len(rep_pat) - len(self.INDEL))
+                    IS_rep_pat_2.append(rep_pat)
+                    IS_rep_pat_len.append(len(rep_pat) - len(self.INDEL))
                     #setting output dict
                     _d = {
-                        'SD_inverted_substitution': IS_motif_found, 
+                        'Inverted_Substitution': IS_motif_found, 
                        
-                        'SD_IS_repeat_pat_len': rep_pat_len,
+                        'IS_rep_pat_len': IS_rep_pat_len,
+
+                        'IS_rep_pat': IS_rep_pat_2,
                        
-                        'SD_IS_motif_pos': SD_IS_motif_pos_3,
+                        'IS_motif_pos': IS_motif_pos_3,
                           }
                     self.snap_out_dict = _d 
-                    """
+            
+
                 if self.extension:
-                    print("ON")
-                    rep_pat = IS_pattern
-                    rep_pat_pos_2 = self.mutant_sequence[
-                            (self.indel_position):].index(rep_pat)#distance from pos to Prevc
-                    max_elongations_p1 = rep_pat_pos_2 // 2
-                    MH1_1 = MH1
-                    P1_1 = P1
-                      
+                    # ---------- PATTERN DI PARTENZA ----------
+                        L = MH_lengths        # lunghezza MH iniziale
+                        MH1_rc = self.reverse_complement_converter(seq=MH1)
+                        P1_rc = self.reverse_complement_converter(seq=P1)
+                        self.INDEL_revc = self.reverse_complement_converter(seq=self.INDEL)
 
-                    for i in range (1, rep_pat_pos_2):
-                      ###elongation of MH, creating the pattern and search it downstream 
-                         MH1_1 = self.ref_genome_up [(- MH_lengths -i):] 
-                         #MH1_1_indel_P1 = MH1_1 + self.INDEL + P1
-                         P1revc_indel_MH1_1revc = self.reverse_complement_converter(seq = MH1_1 + self.INDEL + P1) 
-                         print("self.INDEL :" + self.INDEL)
-                         print("MH1_1: "+ MH1_1)
-                         print("P1: "+ P1)
-                         if P1revc_indel_MH1_1revc in self.ref_genome_down [ len(self.ANC) + len(P1):]:
-                             tmp_pos = self.ref_genome_down[ len(self.ANC) + (len(P1)):].index(P1revc_indel_MH1_1revc)
-                             #tmp_pos is the distance of the BZR after elongation 
-                             #print("tmp_pos: "+str(tmp_pos))
+                        after_P = self.ref_genome_down[len(self.ANC)+ len(P1):] # tutto ciò che sta dopo P1
+                        search_pattern = P1_rc + self.INDEL_revc + MH1_rc   # rc(P1) + INDEL + rc(MH1)
+                        print("search_pattern: "+search_pattern)
+                        distance_Y = after_P.find(search_pattern, 1)   # parte da 1: salta Y = 0
+                        print(distance_Y)
+                        print(search_pattern)
+                        if distance_Y == -1:
+                            raise ValueError("pattern non trovato con Y >= 1")      # posizione di rc(P1) in after_P
+                        Y_len = distance_Y# Y = after_P[:idx]
+                        print("Y_len: "+ str(Y_len))
+                        assert Y_len >= 1, "Y deve essere almeno 1 nucleotide"
 
-                         else:
-                             MH1_2 = self.ref_genome_up[(- MH_lengths -i +1):]
-                             print("elongations finished")
-                             print("MH1_2: "+str(MH1_2))
-                             P1revc_indel_MH1_1revc = self.reverse_complement_converter(seq = MH1_2 + self.INDEL + P1) 
-                             print("P1revc_indel_MH1_1revc : " + P1revc_indel_MH1_1revc)
-                             tmp_pos_2 = self.ref_genome_down[
-                                     len(self.ANC) + len(P1):].index(P1revc_indel_MH1_1revc)
-                             max_elongations_p2 = tmp_pos_2 // 2
-                             #print("tmp_pos_2: " +str(tmp_pos_2))
-                             break
-                    else:
-                        P1revc_indel_MH1_1revc = rep_pat
-                        MH1_2 = self.reverse_complement_converter(seq = MH1_1)
-                        max_elongations_p2 = max_elongations_p1
+                        # inizio di rc(MH) in after_P (fisso: non dipende dalle estensioni di MH)
+                        base_mh = distance_Y + len(P1_rc) + len(self.INDEL)
+                        # ---------- ESTENSIONE DI MH ----------
+                        # MH cresce a sinistra in ref_genome_up, rc(MH) cresce a destra in after_P.
+                        # Non dipende da Y: dipende solo da quanto sta a monte e a valle.
+                        MH1_2 = MH1
+                        MH1_2_rc = MH1_rc
 
+                        for i in range(1, len(self.ref_genome_up) - L + 1):
+                            MH1_i = self.ref_genome_up[-(L + i):] # MH esteso a sinistra di i
+                            MH1_i_rc = self.reverse_complement_converter(seq=MH1_i)
 
-                    for i in range(1, max_elongations_p2):
-                        P1_1 = self.ref_genome_down[
-                                len(self.ANC) : len(self.ANC) + MH_lengths+i]
-                        print("P1_1:"+P1_1)
-                        #MH1_2_indel_P1_1 = MH1_2 + self.INDEL + P1_1
-                        #print(MH1_2_indel_P1_1)
-                        P1_1revc_indel_MH1_2revc = self.reverse_complement_converter(seq = MH1_2 + self.INDEL + P1_1)
+                            # rc(MH esteso) = rc(MH) + rc(basi aggiunte): deve combaciare dopo l'INDEL
+                            if after_P[base_mh:].startswith(MH1_i_rc):
+                                MH1_2 = MH1_i                             # ultima estensione valida
+                                MH1_2_rc = MH1_i_rc
+                            else:
+                                break
+                        # ---------- ESTENSIONE DI P ----------
+                        # con P esteso di j: Y = after_P[j : idx - j], lunghezza idx - 2j >= 1
+                        P1_2 = P1
+                        Y_2 = after_P[:distance_Y]
+                        #II_pattern = MH1_2 + P1 + Y_2 + P1_rc + self.INDEL + MH1_2_rc
 
-                        if P1_1revc_indel_MH1_2revc in self.ref_genome_down [ len(self.ANC) + len(P1):]:
-                            continue
-                        else:
-                            P1_2 = P1_1[:-1]
-                            print("P1_2: "+P1_2)
-                            IS_pattern = self.reverse_complement_converter(seq = MH1_2 + self.INDEL + P1_2)
-                            #DS_pattern = MH1_2 + self.INDEL + P1_2
-                            print("P1_2revc_indel_MH1_2revc : "+ IS_pattern)
-                            break
-                    else:
+                        j_max = (distance_Y - 1) // 2
+
+                        for j in range(1, j_max + 1):
+                            # P non può crescere oltre quello che c'è a valle
+                            if len(P1) + j > len(self.ref_genome_down):
+                                break
+
+                            P1_j = self.ref_genome_down[len(self.ANC):len(self.ANC)+len(P1) + j]     # P esteso a destra di j
+                            P1_j_rc = self.reverse_complement_converter(seq=P1_j)
+                            self.INDEL_rc = self.reverse_complement_converter(seq=self.INDEL)
+                            candidato = P1_j_rc + self.INDEL_rc + MH1_2_rc      # usa già l'rc(MH) esteso
+
+                            # rc(P esteso) inizia j basi prima di rc(P1) originale
+                            if after_P[distance_Y - j:].startswith(candidato): # se in after_p dopo distance_Y - j non inizia con i P1revc allora breakka
+                                P1_2 = P1_j                               # ultima estensione valida
+                                
+                            else:
+                                break
+
+                        j_final = len(P1_2) - len(P1)
+                        i_final = len(MH1_2) - L
+                        Y_2 = after_P[j_final: distance_Y - j_final]
+                        P1_2_rc = self.reverse_complement_converter(seq = P1_2)
+                        IS_pattern = P1_2_rc + self.INDEL_revc + MH1_2_rc
+
+                        print("MH1_2:", MH1_2, "(+%d)" % i_final)
+                        print("P1_2:", P1_2, "(+%d)" % j_final)
+                        print("Y finale:", Y_2, "len:", len(Y_2))
+                        print("IS_pattern:", IS_pattern)
+                        rep_pat = IS_pattern
                         
-                        IS_pattern=self.reverse_complement_converter(seq = MH1_2 + self.INDEL + P1)
-                        #if P2 doesn't get extended RZB remains with R not extendend P2 non viene allungato allora il BR rimane con R non allungato
-                        P1_2 = self.reverse_complement_converter(seq = P1_1)
-                    """
-                if self.extension:
-                # ---------- PATTERN DI PARTENZA ----------
-                    L = MH_lengths        # lunghezza MH iniziale
-                    MH1_rc = self.reverse_complement_converter(seq=MH1)
-                    P1_rc = self.reverse_complement_converter(seq=P1)
-                    self.INDEL_revc = self.reverse_complement_converter(seq=self.INDEL)
-
-                    after_P = self.ref_genome_down[len(self.ANC)+ len(P1):] # tutto ciò che sta dopo P1
-                    search_pattern = P1_rc + self.INDEL_revc + MH1_rc   # rc(P1) + INDEL + rc(MH1)
-                    print("search_pattern: "+search_pattern)
-                    distance_Y = after_P.find(search_pattern, 1)   # parte da 1: salta Y = 0
-                    if distance_Y == -1:
-                        raise ValueError("pattern non trovato con Y >= 1")      # posizione di rc(P1) in after_P
-                    Y_len = distance_Y# Y = after_P[:idx]
-                    print("Y_len: "+ str(Y_len))
-                    assert Y_len >= 1, "Y deve essere almeno 1 nucleotide"
-
-                    # inizio di rc(MH) in after_P (fisso: non dipende dalle estensioni di MH)
-                    base_mh = distance_Y + len(P1_rc) + len(self.INDEL)
-                    # ---------- ESTENSIONE DI MH ----------
-                    # MH cresce a sinistra in ref_genome_up, rc(MH) cresce a destra in after_P.
-                    # Non dipende da Y: dipende solo da quanto sta a monte e a valle.
-                    MH1_2 = MH1
-                    MH1_2_rc = MH1_rc
-
-                    for i in range(1, len(self.ref_genome_up) - L + 1):
-                        MH1_i = self.ref_genome_up[-(L + i):] # MH esteso a sinistra di i
-                        MH1_i_rc = self.reverse_complement_converter(seq=MH1_i)
-
-                        # rc(MH esteso) = rc(MH) + rc(basi aggiunte): deve combaciare dopo l'INDEL
-                        if after_P[base_mh:].startswith(MH1_i_rc):
-                            MH1_2 = MH1_i                             # ultima estensione valida
-                            MH1_2_rc = MH1_i_rc
-                        else:
-                            break
-                    # ---------- ESTENSIONE DI P ----------
-                    # con P esteso di j: Y = after_P[j : idx - j], lunghezza idx - 2j >= 1
-                    P1_2 = P1
-                    Y_2 = after_P[:distance_Y]
-                    #II_pattern = MH1_2 + P1 + Y_2 + P1_rc + self.INDEL + MH1_2_rc
-
-                    j_max = (distance_Y - 1) // 2
-
-                    for j in range(1, j_max + 1):
-                        # P non può crescere oltre quello che c'è a valle
-                        if len(P1) + j > len(self.ref_genome_down):
-                            break
-
-                        P1_j = self.ref_genome_down[len(self.ANC):len(self.ANC)+len(P1) + j]     # P esteso a destra di j
-                        P1_j_rc = self.reverse_complement_converter(seq=P1_j)
-                        self.INDEL_rc = self.reverse_complement_converter(seq=self.INDEL)
-                        candidato = P1_j_rc + self.INDEL_rc + MH1_2_rc      # usa già l'rc(MH) esteso
-
-                        # rc(P esteso) inizia j basi prima di rc(P1) originale
-                        if after_P[distance_Y - j:].startswith(candidato): # se in after_p dopo distance_Y - j non inizia con i P1revc allora breakka
-                            P1_2 = P1_j                               # ultima estensione valida
-                            
-                        else:
-                            break
-
-                    j_final = len(P1_2) - len(P1)
-                    i_final = len(MH1_2) - L
-                    Y_2 = after_P[j_final: distance_Y - j_final]
-                    P1_2_rc = self.reverse_complement_converter(seq = P1_2)
-                    IS_pattern = P1_2_rc + self.INDEL_revc + MH1_2_rc
-
-                    print("MH1_2:", MH1_2, "(+%d)" % i_final)
-                    print("P1_2:", P1_2, "(+%d)" % j_final)
-                    print("Y finale:", Y_2, "len:", len(Y_2))
-                    print("IS_pattern:", IS_pattern)
-                    rep_pat = IS_pattern
-                    
-                    up_start = len(self.ANC) + len (P1_2_rc)
-                    down_start = - len(MH1_2_rc) 
-                    #print(up_start)
-                    #print(down_start)
-                                        
-                    for MH_lengths in self.MH_lengths:
-                        pos=get_motifs_pos_3(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=rep_pat,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
-
-                    SD_IS_motif_pos_3.append(pos)
-                    IS_motif_found.append(len(pos) > 0)
-                    #rep_pat_2.append(rep_pat)
-                    rep_pat_len.append(len(rep_pat))
-       
-                    #setting output dict
-                    _d = {
-                        'SD_inverted_substitution': IS_motif_found, 
+                        up_start = len(self.ANC) + len (P1_2_rc)
+                        down_start = - len(MH1_2_rc) 
+                        #print(up_start)
+                        #print(down_start)
+                                            
+                        for MH_lengths in self.MH_lengths:
+                            pos=get_motifs_pos_3(ref=self.refFA, CHR=self.chrom, POS=self.pos_on_chr,motif=rep_pat,windowsize=self.windowsize,down_start=down_start,up_start=up_start)
                         
-                        'SD_IS_repeat_pat_len': rep_pat_len,
-                        
-                        'SD_IS_motif_pos': SD_IS_motif_pos_3,
-                        }
-                    self.snap_out_dict = _d 
+                        IS_motif_pos_3.append(pos)
+
+                        IS_motif_found.append(len(pos) > 0)
+                        IS_rep_pat_2.append(rep_pat)
+                        IS_rep_pat_len.append(len(rep_pat) - len(self.INDEL))
+            
+                        #setting output dict
+                        _d = {
+                            'Inverted_Substitution': IS_motif_found, 
+                           
+                            'IS_rep_pat_len': IS_rep_pat_len,
+
+                            'IS_rep_pat': IS_rep_pat_2,
+                           
+                            'IS_motif_pos': IS_motif_pos_3
+                            }
+                        self.snap_out_dict = _d 
 
 
     def export_data(self):
@@ -1518,41 +1503,57 @@ class emMEJrealignment:
         """
         _colnames = [
             # deletions
-            'MMEJ', 'MMEJ_motif_len',
-                       
+            'MMEJ', 
+            'MMEJ_motif_len',
+            'MMEJ_motif',
+
+            #Direct_template
+            'Direct_Template',
+            'DT_indel_pos',
+            
+            #Inverted_template
+            'Inverted_Template',
+            'IT_indel_pos',
+
             # SD_inverted_insertion
-            'SD_inverted_insertion',
-            'SD_II_repeat_pat_len', 
-            'SD_II_motif_pos',
+            'Inverted_Insertion',
+            'II_rep_pat_len', 
+            'II_rep_pat',
+            'II_motif_pos',
             
             #SD-direct_deletion
-            'SD_direct_deletion', 
-            'SD_DD_repeat_pat_len',
-            'SD_DD_motif_pos'
+            'Direct_Deletion', 
+            'DD_rep_pat_len',
+            'DD_rep_pat',
+            'DD_motif_pos',
 
             # SD_direct_insertion
-            'SD_direct_insertion',
-            'SD_DI_repeat_pat_len',
-            'SD_DI_motif_pos',
+            'Direct_Insertion',
+            'DI_rep_pat_len',
+            'DI_rep_pat',
+            'DI_motif_pos',
                         
             # SD_inverted_deletion
-            'SD_inverted_deletion',
-            'SD_ID_repeat_pat_len',
-            'SD_ID_motif_pos',
+            'Inverted_Deletion',
+            'ID_rep_pat_len',
+            'ID_rep_pat',
+            'ID_motif_pos',
 
             #SD_direct_substitution
-            'SD_direct_substitution',
+            'Direct_Substitution',
             
-            'SD_DS_repeat_pat_len',
+            'DS_rep_pat_len',
+            'DS_rep_pat',
             
-            'SD_DS_motif_pos',
+            'DS_motif_pos',
             
             #SD_inverted_substitution
-             'SD_inverted_substitution',
+             'Inverted_Substitution',
+             'IS_rep_pat_len',
             
-             'SD_IS_repeat_pat_len',
+             'IS_rep_pat',
              
-             'SD_IS_motif_pos',
+             'IS_motif_pos',
                                       
             # polymerase slippage
             #'pol_slip' , 'pol_slip_submotif' , 'pol_slippage_repeatsIndel',
@@ -1560,43 +1561,56 @@ class emMEJrealignment:
             ]
 
         _Dtypes={
-            'MMEJ':str,'MMEJ_motif_len':str,
-           
-            #SD_inverted_insertion
-            'SD_inverted_insertion':str,
-            'SD_II_repeat_pat_len':str,
-            'SD_II_motif_pos':str,
+            'MMEJ':str,
+            'MMEJ_motif_len':str,
+            'MMEJ_motif':str,
             
+            #Direct_template
+            'Direct_Template':str,
+            'DT_indel_pos':str,
+
+            #Inverted_Template
+            'Inverted_Template':str,
+            'IT_indel_pos':str,
+
+            #SD_inverted_insertion
+            'Inverted_Insertion':str,
+            'II_rep_pat_len':str,
+            'II_motif_pos':str,
+            'II_rep_pat':str,            
             
             #SD-direct_deletion
-            'SD_direct_deletion':str,
-            'SD_DD_repeat_pat_len':str,
-            'SD_DD_motif_pos':str,
+            'Direct_Deletion':str,
+            'DD_rep_pat_len':str,
+            'DD_rep_pat':str,
+            'DD_motif_pos':str,
             
             # SD_direct_insertion
-            'SD_direct_insertion':str,
-            'SD_DI_repeat_pat_len':str,
-            'SD_DI_motif_pos':str, 
-
+            'Direct_Insertion':str,
+            'DI_rep_pat':str,
+            'DI_rep_pat_len':str,
+            'DI_motif_pos':str, 
                       
             # SD_inverted_deletion
-            'SD_inverted_deletion':str,
-            'SD_ID_repeat_pat_len':str,
-            'SD_ID_motif_pos':str, 
+            'Inverted_Deletion':str,
+            'ID_rep_pat':str,
+            'ID_rep_pat_len':str,
+            'ID_motif_pos':str, 
             
             #SD_direct_substitution
-            'SD_direct_substitution':str,
+            'Direct_Substitution':str,
          
-            'SD_DS_repeat_pat_len':str,
+            'DS_rep_pat_len':str,
+            'DS_rep_pat':str,
             
-            'SD_DS_motif_pos':str,
+            'DS_motif_pos':str,
             
             #SD_inverted_substitution
-            'SD_inverted_substitution':str,
-            
-            'SD_IS_repeat_pat_len':str,
-            
-            'SD_IS_motif_pos':str,
+            'Inverted_Substitution':str,
+                        
+            'IS_rep_pat_len':str,
+            'IS_rep_pat':str,
+            'IS_motif_pos':str,
               }
             # polymerase slippage
             #'pol_slip':str, 'pol_slip_submotif':str, 'pol_slippage_times':str,

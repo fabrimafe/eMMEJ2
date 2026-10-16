@@ -20,16 +20,16 @@ library(optimx)
 MECHANISMS <- list(
 
   ID = list(
-    mechanism_col = "SD_inverted_deletion",
-    motif_pos_col = "SD_ID_motif_pos",
-    motif_len_col = "SD_ID_repeat_pat_len",
+    mechanism_col = "Inverted_Deletion",
+    motif_pos_col = "ID_motif_pos",
+    motif_len_col = "ID_rep_pat_len",
     len_scale = 0.5
   ),
 
   DD = list(
-    mechanism_col = "SD_direct_deletion",
-    motif_pos_col = "SD_DD_motif_pos",
-    motif_len_col = "SD_DD_repeat_pat_len",
+    mechanism_col = "Direct_Deletion",
+    motif_pos_col = "DD_motif_pos",
+    motif_len_col = "DD_rep_pat_len",
     len_scale = 0.5
   ),
 
@@ -41,19 +41,32 @@ MECHANISMS <- list(
   ),
 
   DI = list(
-    mechanism_col = "SD_direct_insertion",
-    motif_pos_col = "SD_DI_motif_pos",
-    motif_len_col = "SD_DI_repeat_pat_len",
+    mechanism_col = "Direct_Insertion",
+    motif_pos_col = "DI_motif_pos",
+    motif_len_col = "DI_rep_pat_len",
     len_scale = 0.5
   ),
 
   II = list(
-    mechanism_col = "SD_inverted_insertion",
-    motif_pos_col = "SD_II_motif_pos",
-    motif_len_col = "SD_II_repeat_pat_len",
+    mechanism_col = "Inverted_Insertion",
+    motif_pos_col = "II_motif_pos",
+    motif_len_col = "II_rep_pat_len",
+    len_scale = 0.5
+  ),
+
+  DS = list(
+    mechanism_col = "Direct_Substitution",
+    motif_pos_col = "DS_motif_pos",
+    motif_len_col = "DS_rep_pat_len",
+    len_scale = 0.5
+  ),
+
+  IS = list(
+    mechanism_col = "Inverted_Substitution",
+    motif_pos_col = "IS_motif_pos",
+    motif_len_col = "IS_rep_pat_len",
     len_scale = 0.5
   )
-
 )
 
 # 0b. CONFIGURAZIONE DEI BACKGROUND

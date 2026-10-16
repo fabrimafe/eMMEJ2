@@ -87,6 +87,55 @@ def sliding_vcf(anc, der):
     total_NT_removed = NT_removed_prefix + NT_removed_suffix 
     
     return anc, der, NT_removed_suffix, NT_removed_prefix, total_NT_removed
+def pol_slip_del(refFA,chrom,pos,MH_length,max_length):
+    down_MH = refFA.fetch(chrom,pos - MH_length,pos).upper()
+    
+    up_MH = refFA.fetch(chrom, pos, pos + MH_length).upper()
+    
+    if down_MH != up_MH:
+        return('error')
+    else:
+        #print("uguali")
+        ancestral_state_vcf = refFA.fetch(chrom,pos - 1,pos + len(up_MH)).upper()
+        #print(ancestral_state_vcf)
+        derived_state_vcf = refFA.fetch(chrom,pos - 1, pos).upper()
+        #print(derived_state_vcf)
+        
+        variant_id=str(chrom)+"_"+str(pos)
+        
+        indel_seq=refFA.fetch(chrom,pos,pos + len(up_MH)).upper()
+        indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
+        if (indelNs>-3):
+            print("N found in indel")
+            return('error')
+        else:
+            return(chrom,pos,variant_id,ancestral_state_vcf,derived_state_vcf)
+
+
+def pol_slip_ins(refFA,chrom,pos,MH_length,max_length):
+    down_MH = refFA.fetch(chrom,pos - MH_length,pos).upper()
+    
+    up_MH = refFA.fetch(chrom, pos, pos + MH_length).upper()
+    window_fabio = refFA.fetch (chrom, pos - 10, pos + 10)
+    print(window_fabio)
+    if down_MH != up_MH:
+        return('error')
+    else:
+        #print("uguali")
+        derived_state_vcf = refFA.fetch(chrom,pos - 1,pos + len(up_MH)).upper()
+        #print(ancestral_state_vcf)
+        ancestral_state_vcf = refFA.fetch(chrom,pos - 1, pos).upper()
+        #print(derived_state_vcf)
+        
+        variant_id=str(chrom)+"_"+str(pos)
+        
+        indel_seq=refFA.fetch(chrom,pos,pos + len(up_MH)).upper()
+        indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
+        if (indelNs>-3):
+            print("N found in indel")
+            return('error')
+        else:
+            return(chrom,pos,variant_id,ancestral_state_vcf,derived_state_vcf)
 
 
 def fa2deletion(refFA,chrom,pos,min_length,max_length):
@@ -105,7 +154,7 @@ def fa2deletion(refFA,chrom,pos,min_length,max_length):
     derived_state_vcf=refFA.fetch(chrom,pos-1,pos).upper()
     
     indel_seq = refFA.fetch(chrom,pos,pos+indel_length).upper()
-    
+   
     variant_id=str(chrom)+"_"+str(pos)
     
     indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
@@ -840,6 +889,10 @@ while len(myvcf)<nsims:
         res=fa2deletion_MMEJ(refFA,xchr,xpos,xMHlength,xmaxdistance)
     elif xmechanism=="deletion_NHEJ":
         res=fa2deletion(refFA,xchr,xpos,xMHlength,xmaxdistance)
+    elif xmechanism=="pol_slip_del":
+        res=pol_slip_del(refFA,xchr,xpos,xMHlength,xmaxdistance)
+    elif xmechanism=="pol_slip_ins":
+        res=pol_slip_ins(refFA,xchr,xpos,xMHlength,xmaxdistance)
     elif xmechanism=="SD_inverted_insertion":
         res=fa2insertion_snapback(refFA,xchr,xpos,MH_length=xMHlength,SD_motif_length=xSDlength,max_distance=xmaxdistance)
     elif xmechanism=="SD_inverted_deletion":
