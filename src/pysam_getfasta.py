@@ -83,7 +83,7 @@ def get_motifs_pos(ref, CHR, POS, motif, windowsize):
 def MMEJ_found(motif, search_window):
     if motif in search_window:
         return True, len(motif), motif
-    return False,0
+    return False, 0, None
 
 
 

@@ -176,8 +176,10 @@ def de_collapse(refFA, chrom, pos, ref, alt,de_collapse_distance):
                 new_anc = left_ex + anc + right_ex
                 new_der = left_ex + der + right_ex
                 new_pos = pos - left
-
-                results.append((chrom, new_pos, new_variant_id, new_anc, new_der, pos))
+            
+                de_collapse_id = f"{len(left_ex)}{len(right_ex)}"
+                print("de_collapse_id: "+str(de_collapse_id))
+                results.append((chrom, new_pos, new_variant_id, new_anc, new_der, pos, de_collapse_id))
     
     return results
     

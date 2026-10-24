@@ -204,9 +204,9 @@ if args ['de_collapse_distance'] is not None:
                                                     de_collapse_distance),
                    axis=1)
     df = flatten_2list(df.tolist())
-    df = pd.DataFrame(df, columns=['CHR', 'POS','variant_id', 'ANC', 'DER','original_pos'])
+    df = pd.DataFrame(df, columns=['CHR', 'POS','variant_id', 'ANC', 'DER','original_pos','de_collapse_id'])
 
-#print(df.to_string())
+print(df.to_string())
 # defining indel type and length
 df.loc[:, 'indel_type'] = np.nan
 df.loc[
@@ -294,7 +294,9 @@ microhomology_object = df.apply( lambda x: emMEJrealignment(
                             indel_type=x['indel_type'],
                             flip=False,
                             include_context=args["include_context"],
+                            CRISPR=args["CRISPR"],
                             extension=args["extension"],
+
                             MH_lengths=MH_lengths,
                             windowsize=args['windowsize'], 
                             refFA=refFA, chrom=x['CHR']), axis = 1)
@@ -316,6 +318,7 @@ df['direction'] = 0
 
 print("appending done")
 #2nd step, run on flipped seq (3'->5'):--------->>>>>>>>
+"""
 #if crispr, look for ALL patterns ALSO on the flipped seq:-->
 if args['CRISPR']:
     df_fl = df.loc[:, ['CHR', 'POS', 
@@ -350,7 +353,8 @@ if args['CRISPR']:
     # direction, this is necessary for proper EM functioning
     df['variant_id'] = df.apply(
         lambda row: f"{row['variant_id']}.{row['direction']}", axis=1)
-    
+
+"""
 # if not crispr, look for patterns (only for insertions, no deletion) on the fliped seq (3'->5'):--> 
 """
 print("start insertions")
@@ -425,7 +429,7 @@ for mech,pat,col in zip(mechanism, patterns, cols):
 df['observed'] = (df['POS'] == df['variant_id'].str.split('_').str[1].astype(int)).astype(int)
 
 col_to_save = ['CHR', 'POS','variant_id', #'REF','ALT',
-            'ANC','DER','alignment_ID','direction', 'indel_type', 'indel_len', 'observed', 
+            'ANC','DER','alignment_ID','direction', 'indel_type', 'indel_len', 'observed','de_collapse_id', 
             # deletions
             'MMEJ',
             'MMEJ_motif_len',

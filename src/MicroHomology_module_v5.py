@@ -31,13 +31,14 @@ class emMEJrealignment:
                 ANC: str, DER: str,
                 indel_type: str, flip: bool, include_context: bool,
                 extension: bool, windowsize: int, refFA: str, MH_lengths: list, 
-                chrom: str, pos_on_chr:int):
+                chrom: str, pos_on_chr:int, CRISPR: bool):
         self.indel_position = windowsize #fabri: OK, this is weird but try to understand that.
         self.indel_type = indel_type
         self.windowsize = windowsize
         self.flip = flip        
         self.include_context = include_context
         self.extension = extension
+        self.CRISPR = CRISPR
         self.refFA=refFA
         self.chrom=chrom
         self.pos_on_chr=pos_on_chr
@@ -227,6 +228,8 @@ class emMEJrealignment:
         self.loop_out_dict = {}
         self.pol_slip_dict = {}
         self.del_out_dict = {}
+        self.dt_out_dict = {}
+        self.it_out_dict = {}
 
         if self.indel_type == 'INS': 
             self.sd_snap_back_MMEJ()
@@ -248,44 +251,48 @@ class emMEJrealignment:
     def deletion_MMEJ(self):
     
         MMEJ_motif,MMEJ_motif_found,MMEJ_motif_len = list(),list(), list()
-
-        ###1st step is to bring MH1 and P1 from the ref seq 
-        for MH_lengths in self.MH_lengths:
-            MH = self.ref_genome_up [ - MH_lengths :]  
-            #P1 = self.ref_genome_down [(self.indel_length):(self.indel_length+MH_lengths)]
-            #MH1_P1 = MH1 + P1
-            print("MH: " + MH)
-            print("self.INDEL :" + self.INDEL)
-            print(len(self.INDEL))
-            print(len(MH))
-            
-            #print("ex: " + str(self.extension))
-            #searching the pattern in self.DSB_down
-        
-            if MH in self.DSB_down[(len(self.INDEL)) - len (MH):(len(self.INDEL))]:#1 nt is the necessary for the formation of the loop
-                MMEJ_F = True
-
-            else:
-                MMEJ_F = False
-                print ("MMEJ_F not found")
-            
-            if MMEJ_F:
-                print("MMEJ_F found!")
+        if not self.CRISPR:
+            ###1st step is to bring MH1 and P1 from the ref seq 
+            for MH_lengths in self.MH_lengths:
+                MH = self.ref_genome_up [ - MH_lengths :]  
+                #P1 = self.ref_genome_down [(self.indel_length):(self.indel_length+MH_lengths)]
+                #MH1_P1 = MH1 + P1
+                #print("MH: " + MH)
+                #print("self.INDEL :" + self.INDEL)
+                #print(len(self.INDEL))
+                #print(len(MH))
                 
-                if not self.extension:
-                    print("OFF")
-                    print(self.windowsize)
-                    for MH_lengths in self.MH_lengths:
+                print("crispr spento")
+
+                #print("ex: " + str(self.extension))
+                #searching the pattern in self.DSB_down
+            
+                if MH in self.DSB_down[(len(self.INDEL)) - len (MH):(len(self.INDEL))]:#1 nt is the necessary for the formation of the loop
+                    MMEJ_F = True
+
+                else:
+                    MMEJ_F = False
+                    #print ("MMEJ_F not found")
+                
+                if MMEJ_F:
+                    #print("MMEJ_F found!")
+                    
+                    if not self.extension:
+                        print("OFF")
+                        print(self.windowsize)
                         search_window = self.INDEL
+                        
+                        search_window = self.ref_genome_down[len(self.INDEL)-len(MH) : len(self.INDEL)]
+                        print("search_window:" + search_window)
                         found, length, motif = MMEJ_found(MH, search_window)
 
-    
 
-                    MMEJ_motif_found.append(found)
+
+                        MMEJ_motif_found.append(found)
                     
-                    MMEJ_motif.append(motif)
+                        MMEJ_motif.append(motif)
                     
-                    MMEJ_motif_len.append(length)
+                        MMEJ_motif_len.append(length)
                     
 
                     _d = {
@@ -295,36 +302,172 @@ class emMEJrealignment:
                         }
         
                     self.del_out_dict = _d
-                if self.extension:
-                    print("ON")
-                    window = self.ref_genome_down[:len(self.INDEL)]
+                    if self.extension:
+                        print("ON")
+                        window = self.ref_genome_down[:len(self.INDEL)]
 
-                    for MH_length in self.MH_lengths:
-                        MH = self.ref_genome_up[-MH_length:]
+                        for MH_length in self.MH_lengths:
+                            MH = self.ref_genome_up[-MH_length:]
 
-                    # estendo a sinistra finché il motivo continua a essere trovato
-                        if MH in window:
-                            for i in range(1, len(self.INDEL) + 1):
-                                candidate = self.ref_genome_up[-(MH_length + i):]
-                                if len(candidate) < MH_length + i:   # finita la sequenza
-                                    break
-                                if candidate in window:
-                                    MH = candidate
-                                else:
-                                    break
+                        # estendo a sinistra finché il motivo continua a essere trovato
+                            if MH in window:
+                                for i in range(1, len(self.INDEL) + 1):
+                                    candidate = self.ref_genome_up[-(MH_length + i):]
+                                    if len(candidate) < MH_length + i:   # finita la sequenza
+                                        break
+                                    if candidate in window:
+                                        MH = candidate
+                                    else:
+                                        break
 
-                        print("MH esteso(MMEJ): " + MH)
-                        found, length, motif = MMEJ_found(MH, window)
+                            print("MH esteso(MMEJ): " + MH)
+                            found, length, motif = MMEJ_found(MH, window)
+                            MMEJ_motif_found.append(found)
+                            MMEJ_motif_len.append(length)
+                            MMEJ_motif.append(motif)
+
+                        self.del_out_dict = {
+                            'MMEJ': MMEJ_motif_found,
+                            'MMEJ_motif_len': MMEJ_motif_len,
+                            'MMEJ_motif': MMEJ_motif
+                            }
+        if self.CRISPR:
+            print("crispr acceso")
+            for MH_lengths in self.MH_lengths:
+                MH = self.ref_genome_up [ - MH_lengths :]
+                MH_2 = self.ref_genome_down [len(self.INDEL) : len(self.INDEL) + MH_lengths]
+                #print("MH: " + MH)
+                print("MH_2: " + MH_2)
+                #print("self.INDEL :" + self.INDEL)
+                #print(len(self.INDEL))
+                #print(len(MH))
+                
+                print("crispr spento")
+
+                #print("ex: " + str(self.extension))
+                #searching the pattern in self.DSB_down
+            
+                if MH in self.DSB_down[(len(self.INDEL)) - len (MH):(len(self.INDEL))] or MH_2 in self.DSB_down [ : len(MH)]:
+                
+                    MMEJ_F = True
+
+                else:
+                    MMEJ_F = False
+                    #print ("MMEJ_F not found")
+                
+                if MMEJ_F:
+                    #print("MMEJ_F found!")
+                    
+                    if not self.extension:
+                        print("OFF")
+                        print(self.windowsize)
+                        search_window_2 = self.ref_genome_down [ : len(MH)]
+                        
+                        search_window = self.ref_genome_down[len(self.INDEL)-len(MH) : len(self.INDEL)]
+                        print("search_window:" + search_window)
+                        print("search_window_2:" + search_window_2)
+                        
+                        # lato 1: MH  contro la fine della delezione
+                        found_1, length_1, motif_1 = MMEJ_found(MH, search_window)
+                        # lato 2: MH_2 contro l'inizio della delezione
+                        found_2, length_2, motif_2 = MMEJ_found(MH_2, search_window_2)
+
+                        # True se trovato in almeno uno dei due casi
+                        found = found_1 or found_2
+
+                        # motivo/lunghezza: prendo quelli del lato che ha trovato
+                        # (se li trova entrambi, prendo il più lungo)
+                        if found_1 and found_2:
+                            if length_1 >= length_2:
+                                length, motif = length_1, motif_1
+                            else:
+                                length, motif = length_2, motif_2
+                        elif found_1:
+                            length, motif = length_1, motif_1
+                        elif found_2:
+                            length, motif = length_2, motif_2
+
                         MMEJ_motif_found.append(found)
-                        MMEJ_motif_len.append(length)
+                    
                         MMEJ_motif.append(motif)
+                    
+                        MMEJ_motif_len.append(length)
+                    
 
-                    self.del_out_dict = {
+                    _d = {
                         'MMEJ': MMEJ_motif_found,
                         'MMEJ_motif_len': MMEJ_motif_len,
                         'MMEJ_motif': MMEJ_motif
                         }
+        
+                    self.del_out_dict = _d
 
+                    if self.extension:
+                        print("ON")
+                        window = self.ref_genome_down[:len(self.INDEL)]
+
+                        for MH_length in self.MH_lengths:
+                            MH = self.ref_genome_up[-MH_length:]
+                            MH_2 = self.ref_genome_down[len(self.INDEL) : len(self.INDEL) + MH_length]
+
+                            # default: valori "non trovato", così ogni giro appende sempre qualcosa
+                            found, length, motif = False, 0, None
+
+                            # lato 1: estendo MH a sinistra finché il motivo continua a essere trovato
+                            if MH in window:
+                                for i in range(1, len(self.INDEL) + 1):
+                                    candidate = self.ref_genome_up[-(MH_length + i):]
+                                    if len(candidate) < MH_length + i:   # finita la sequenza
+                                        break
+                                    if candidate in window:
+                                        MH = candidate
+                                    else:
+                                        break
+
+                            # lato 2: estendo MH_2 a destra finché il motivo continua a essere trovato
+                            if MH_2 and MH_2 in window:
+                                for i in range(1, len(self.INDEL) + 1):
+                                    candidate = self.ref_genome_down[len(self.INDEL) : len(self.INDEL) + MH_length + i]
+                                    if len(candidate) < MH_length + i:   # finita la sequenza
+                                        break
+                                    if candidate in window:
+                                        MH_2 = candidate
+                                    else:
+                                        break
+
+                            print("MH esteso(MMEJ): " + MH)
+                            print("MH_2 esteso(MMEJ): " + MH_2)
+
+                            found_1, length_1, motif_1 = MMEJ_found(MH, window)
+                            found_2, length_2, motif_2 = MMEJ_found(MH_2, window) if MH_2 else (False, 0, None)
+
+                            # True se trovato in almeno uno dei due casi
+                            found = found_1 or found_2
+
+                            # motivo/lunghezza: quelli del lato che ha trovato (se entrambi, il più lungo)
+                            if found_1 and found_2:
+                                if length_1 >= length_2:
+                                    length, motif = length_1, motif_1
+                                else:
+                                    length, motif = length_2, motif_2
+                            elif found_1:
+                                length, motif = length_1, motif_1
+                            elif found_2:
+                                length, motif = length_2, motif_2
+
+                            # append SEMPRE: le liste restano allineate a MH_lengths
+                            MMEJ_motif_found.append(found)
+                            MMEJ_motif_len.append(length)
+                            MMEJ_motif.append(motif)
+
+                        # fuori dal for: esiste sempre
+                        self.del_out_dict = {
+                            'MMEJ': MMEJ_motif_found,
+                            'MMEJ_motif_len': MMEJ_motif_len,
+                            'MMEJ_motif': MMEJ_motif
+                        }
+
+                    
     def direct_template(self):
         
         DT_motif_pos_3, DT_motif_found = list(), list()
@@ -342,7 +485,7 @@ class emMEJrealignment:
              'Direct_Template': DT_motif_found,
              'DT_indel_pos' :DT_motif_pos_3
               }
-        self.loop_out_dict = _d
+        self.dt_out_dict = _d
             
     def inverted_template(self):
 
@@ -362,7 +505,7 @@ class emMEJrealignment:
              'Inverted_Template': IT_motif_found,
              'IT_indel_pos' :IT_motif_pos_3
               }
-        self.snap_out_dict = _d
+        self.dt_out_dict = _d
 
 
     def pol_slip(self,xINDEL):
@@ -1021,7 +1164,7 @@ class emMEJrealignment:
                 print ("BZR not found")
             
             if SD_direct_insertion:
-                print("BZR found!")
+                print("DI_BZR found!")
         
                 # Creating mmej_marked
                 if not self.extension:
@@ -1060,7 +1203,10 @@ class emMEJrealignment:
                     DI_motif_found.append(len(pos) > 0)
                     DI_rep_pat_2.append(rep_pat)
                     DI_rep_pat_len.append(len(rep_pat)-len(self.INDEL))
-
+                    print(DI_motif_found)
+                    print(DI_motif_pos_3)
+                    print(DI_rep_pat_2)
+                    print(DI_rep_pat_len)
                           
                     #setting output dict
                     _d = {
@@ -1622,7 +1768,11 @@ class emMEJrealignment:
         ex_df.loc[0,:] = np.nan
         # merging dicts from all paths
         d = {**self.del_out_dict, 
-            **self.snap_out_dict, **self.loop_out_dict, **self.pol_slip_dict}
+            **self.snap_out_dict,
+            **self.loop_out_dict,
+            **self.dt_out_dict,
+            **self.it_out_dict,
+            **self.pol_slip_dict}
         if self.include_context: d = {**d, **self.context}
         """ 
         # setting the right values to match corresponding columns

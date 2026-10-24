@@ -804,7 +804,7 @@ def fa2SD_snapback_substitution(refFA,chrom,pos,MH_length,SD_motif_length,max_di
             print("der_slide: "+der_slide)
             if anc_slide == der_slide:
                 print("ANC and DER are equal")
-                return("erroe")
+                return("error")
             else:
 
                 print("NT_removed_suffix :"+str(NT_removed_suffix))
