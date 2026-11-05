@@ -89,11 +89,9 @@ def flatten_2list(list_of_lists):
     return(flat_list)
 
 
-def DSB_background_generator(refFA, chrom, pos, original_pos, ref, alt, indel_type, max_distance):
+def DSB_background_generator(refFA, chrom, pos, original_pos, ref, alt, indel_type, max_distance, step):
     """
     creating 'background' variants shifting the pos upstream and downsteam 
-
-
         refFA - genoma di riferimento
         chrom - cromosoma (str)
         pos -  posizione originale (1-based, VCF)
@@ -115,8 +113,8 @@ def DSB_background_generator(refFA, chrom, pos, original_pos, ref, alt, indel_ty
         pos_max = max(pos)
     else:
         pos_min = pos_max = pos
-
-    for n in range(0, max_distance + 1):
+    
+    for n in range(0, max_distance + 1, step):
         for direction in (-1, 1):          # -1 = sinistra, +1 = destra
             new_pos = pos_min - n if direction == -1 else pos_max + n 
             new_variant_id = f"{chrom}_{ori_pos}"
@@ -176,10 +174,11 @@ def de_collapse(refFA, chrom, pos, ref, alt,de_collapse_distance):
                 new_anc = left_ex + anc + right_ex
                 new_der = left_ex + der + right_ex
                 new_pos = pos - left
-            
+                n_de_collapse=len(left_ex) + len(right_ex)
+                print("n_de_collapse: "+str(n_de_collapse))
                 de_collapse_id = f"{len(left_ex)}{len(right_ex)}"
                 print("de_collapse_id: "+str(de_collapse_id))
-                results.append((chrom, new_pos, new_variant_id, new_anc, new_der, pos, de_collapse_id))
+                results.append((chrom, new_pos, new_variant_id, new_anc, new_der, pos, de_collapse_id, n_de_collapse))
     
     return results
     

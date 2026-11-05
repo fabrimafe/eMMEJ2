@@ -69,6 +69,9 @@ all_args.add_argument("-a", "--alignment", required=False,
 all_args.add_argument("-m", "--maxdistance", type=int ,default=None,
         help="a flag that specify the max number of shifts to each side in the DSB_generator_background")
 
+all_args.add_argument("-s", "--step", type=int, default=1,
+        help="step between shifts in the DSB_generator_background (default 1; e.g. -m 50 -s 5 gives shifts 0,5,10,...,50)")
+
 all_args.add_argument("-d", "--de_collapse_distance", type=int ,default=None,
         help="a flag that specify the max number of nt added to the right ot to the left of ANC and DER")
 args = vars(all_args.parse_args())
@@ -204,7 +207,7 @@ if args ['de_collapse_distance'] is not None:
                                                     de_collapse_distance),
                    axis=1)
     df = flatten_2list(df.tolist())
-    df = pd.DataFrame(df, columns=['CHR', 'POS','variant_id', 'ANC', 'DER','original_pos','de_collapse_id'])
+    df = pd.DataFrame(df, columns=['CHR', 'POS','variant_id', 'ANC', 'DER','original_pos','de_collapse_id', 'n_de_collapse'])
 
 print(df.to_string())
 # defining indel type and length
@@ -245,12 +248,14 @@ df.loc[df['indel_type'] == 'SUB', 'indel_len'] = abs(df['ref_len'] - df['alt_len
 df_alignments = df.copy()
 df_alignments['alignment_ID'] = df_alignments['original_pos'].astype(str).str.split('.').str[-1].astype(int)
 
+
 maxdistance = args['maxdistance']
+step = args['step']
 #======DSB_background_generators useful to create a background of DSB around the indel======
 if args ['maxdistance'] is not None:
     df = df.apply(lambda row: DSB_background_generator(refFA, row['CHR'], row['POS'],row['original_pos'],
                                                     row['ANC'], row['DER'],
-                                                    row['indel_type'], maxdistance),
+                                                    row['indel_type'], maxdistance, step),
                    axis=1)
     df = flatten_2list(df.tolist())
     df = pd.DataFrame(df, columns=['CHR', 'POS','variant_id', 'ANC', 'DER','original_pos','indel_type','alignment_ID'])
@@ -275,7 +280,7 @@ df = df.drop_duplicates(subset=['POS','ANC','DER'], keep='first')
 df = df.reset_index(drop=True)
 #print(df.to_string())
 indel_position = args['windowsize']
-
+step = args['step']
 
 
 
@@ -396,40 +401,31 @@ print("save results")
 logging.debug(f'## MMEJ detection is done({args["vcf"]})')
 df.info(buf=buf)
 logging.info(buf.getvalue())
-
-#Rename some output variables
-#df['snap_mh2_len'] = df['snap_mh2'].str.len()
-#df['loop_mh2_len'] = df['loop_mh2'].str.len()
-
-#df.loc[(df['del_mmej'] == True), 'del_motif_d'] = df.loc[(df['del_mmej'] == True), 'indel_len'] - df.loc[(df['del_mmej'] == True), 'del_mmej_cand_len'].apply(lambda x: x[0]) #useful for markov model. but easier to do it later, after I reconvert string into lists
-
-#Create output table of positions. Unfortunately, it works only for one pattern for mechanism.
-"""
-mechanism = ['del_mmej', 'SD_loop_out', 'SD_snap_back']
-patterns = ['del_mmej_cand', 'loop_repeat_pat', 'snap_repeat_pat']
-cols = [['del_mmej_motif_pos', 'del_mmej_freq_small_window', 'del_mmej_freq_large_window'],
-        ['loop_motif_pos', 'loop_freq_small_window', 'loop_freq_large_window'],
-        ['snap_motif_pos', 'snap_freq_small_window', 'snap_freq_large_window']]
-for mech,pat,col in zip(mechanism, patterns, cols):
-    df.loc[:, col] = np.nan, np.nan, np.nan
-    tmp_df = df.loc[
-            (df[mech] == True),:].apply(lambda row: get_motifs_freqs(
-                ref=refFA, CHR=row['CHR'], POS=row['POS'], large_window=1000,
-                small_window=args['windowsize'],
-                    motifs=row[pat], indel_type=row['indel_type']),
-                    axis=1, result_type='expand')
-    print("1done")
-    tmp_df.rename(columns={0:col[0],1:col[1],2:col[2]},inplace=True)
-    df.loc[
-        (df[mech] == True),col] = tmp_df
-"""
-
 # ----------- Make this more efficient -------------------------------------
+if 'de_collapse_id' not in df.columns:
+    df['de_collapse_id'] = '00'
 
-df['observed'] = (df['POS'] == df['variant_id'].str.split('_').str[1].astype(int)).astype(int)
+df['de_collapse_id'] = df['de_collapse_id'].fillna('00')
+
+orig_pos = df['variant_id'].str.split('_').str[-1].astype(int)
+
+
+
+df['observed'] = (
+    (df['POS'] == orig_pos) &
+    (df['de_collapse_id'] == '00')
+).astype(int)
+
+df['n_de_collapse'] = df['de_collapse_id'].apply(lambda s: sum(int(c) for c in s))
+
+# --- ordina: per ogni variante prima l'osservata, poi le generate ---
+df['_orig_pos'] = orig_pos
+df = df.sort_values(by=['CHR', '_orig_pos', 'observed', 'POS'],
+                    ascending=[True, True, False, True]).reset_index(drop=True)
+df = df.drop(columns=['_orig_pos'])
 
 col_to_save = ['CHR', 'POS','variant_id', #'REF','ALT',
-            'ANC','DER','alignment_ID','direction', 'indel_type', 'indel_len', 'observed','de_collapse_id', 
+            'ANC','DER','alignment_ID','direction', 'indel_type', 'indel_len', 'observed','de_collapse_id','n_de_collapse', 
             # deletions
             'MMEJ',
             'MMEJ_motif_len',

@@ -1,0 +1,1073 @@
+import random
+from pysam import FastaFile
+from Bio import pairwise2
+from Bio.pairwise2 import format_alignment
+import pandas as pd
+import argparse
+import os
+
+
+"""
+script che fa due output in base ai meccanismi che io indico, il secondo fa un meccanismo casuale
+
+
+
+python DSBsimulator_secondary.py -r genome.fa -m deletion_MMEJ -n 100 \
+    -o /percorso/primari/mmej.tsv \
+    -o2 /altro/percorso/secondari/mmej_NHEJ.tsv
+"""
+# Construct an argument parser
+print("Parse arguments")
+all_args = argparse.ArgumentParser()
+
+# Add arguments to the parser
+all_args.add_argument("-r", "--ref", required=True,
+   help="reference genome in fasta format")
+all_args.add_argument("-o", "--out", required=False,
+   help="output file")
+all_args.add_argument("-o2", "--out2", required=False,
+   help="secondary output file (paired NHEJ/random insertion/random substitution events). Default: <out>.secondary<ext>")
+all_args.add_argument("-c", "--chrom", required=False,
+   help="chrom of position of DSB; necessary of nsims=1, otherwise ignored")
+all_args.add_argument("-p", "--pos", required=False,type=int,
+   help="position of DSB; necessary if nsims=1; otherwise ignored")
+all_args.add_argument("-n", "--nsims", required=False,default=100,
+      help="number of random DSB to simulate")
+all_args.add_argument("-m", "--mechanism", required=True,default="deletion_MMEJ",
+   help="mechanism of DSB-repair. One of: deletion_NHEJ,deletion_MMEJ,SDloopout,SDsnapback,insertion,MMEJtrans")
+all_args.add_argument("-l", "--MHlength", required=False,type=int,default=2,
+   help="length of microhomology motif ( or minimum indel size ) ")
+all_args.add_argument("-s", "--SDlength", required=False,type=int,default=5,
+      help="length of SD motif/distance second MH in MMEJtrans")
+all_args.add_argument("-d", "--maxdistance", required=False,type=int,default=10,
+      help="maximum distance of MH motif or maximum indel length")
+all_args.add_argument("-zx", "--X_length", required=False,type=int,default=10,
+        help="maximum distance between MH and SD")
+all_args.add_argument("-vr", "--verbose", action="store_true",
+   help="if set, output has an extra column with the annotated mechanism context")
+
+args = vars(all_args.parse_args())
+
+def seq2complement(xseq):
+    """Calculate complement of a sequence and NOT reverse complement"""
+    x_complement = ""
+    for i in xseq:
+        if i == "T" or i == "t":
+            x = "A"
+        elif i == "A" or i == "a":
+            x = "T"
+        elif i == "G" or i == "g":
+            x = "C"
+        elif i == "C" or i == "c":
+            x = "G"
+        else:
+            x = "N"
+        x_complement = x_complement + x
+    return(x_complement)
+
+def seq2revcomplement(xseq):
+    """Calculate reverse complement of a DNA sequence"""
+    return(seq2complement(xseq)[::-1])
+
+    #normalize vcf adding the nt anchor in substitution
+def normalize_vcf(anc, der):
+    
+    while len(anc) > 1 and len(der) > 1 and anc[-1] == der[-1]:
+        anc = anc[:-1]
+        der = der[:-1]
+    
+    
+    while len(anc) > 1 and len(der) > 1 and anc[0] == der[0]:
+        anc = anc[1:]
+        der = der[1:]
+    
+    return anc, der
+    
+    #removing nt when ANC and DER had the same nt at the beginning or at the end, and calculate the suffix removed,
+    #the prefix removed and the total nt removed 
+def sliding_vcf(anc, der):
+    NT_removed_suffix = 0
+    NT_removed_prefix = 0
+
+    while len(anc) > 1 and len(der) > 1 and anc[-1] == der[-1]:
+        anc = anc[:-1]
+        der = der[:-1]
+        NT_removed_suffix += 1
+
+    while len(anc) > 1 and len(der) > 1 and anc[0] == der[0]:
+        anc = anc[1:]
+        der = der[1:]
+        NT_removed_prefix += 1
+
+    total_NT_removed = NT_removed_prefix + NT_removed_suffix 
+    
+    return anc, der, NT_removed_suffix, NT_removed_prefix, total_NT_removed
+def pol_slip_del(refFA,chrom,pos,MH_length,max_length):
+    down_MH = refFA.fetch(chrom,pos - MH_length,pos).upper()
+    
+    up_MH = refFA.fetch(chrom, pos, pos + MH_length).upper()
+    
+    if down_MH != up_MH:
+        return('error')
+    else:
+        #print("uguali")
+        ancestral_state_vcf = refFA.fetch(chrom,pos - 1,pos + len(up_MH)).upper()
+        #print(ancestral_state_vcf)
+        derived_state_vcf = refFA.fetch(chrom,pos - 1, pos).upper()
+        #print(derived_state_vcf)
+        
+        variant_id=str(chrom)+"_"+str(pos)
+        distance_motif = 0 
+        indel_seq=refFA.fetch(chrom,pos,pos + len(up_MH)).upper()
+        indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
+        if (indelNs>-3):
+            print("N found in indel")
+            return('error')
+        else:
+            return(chrom,pos,variant_id,ancestral_state_vcf,derived_state_vcf,distance_motif)
+
+
+def pol_slip_ins(refFA,chrom,pos,MH_length,max_length):
+    down_MH = refFA.fetch(chrom,pos - MH_length,pos).upper()
+    
+    up_MH = refFA.fetch(chrom, pos, pos + MH_length).upper()
+    window_fabio = refFA.fetch (chrom, pos - 10, pos + 10)
+    print(window_fabio)
+    if down_MH != up_MH:
+        return('error')
+    else:
+        #print("uguali")
+        derived_state_vcf = refFA.fetch(chrom,pos - 1,pos + len(up_MH)).upper()
+        #print(ancestral_state_vcf)
+        ancestral_state_vcf = refFA.fetch(chrom,pos - 1, pos).upper()
+        #print(derived_state_vcf)
+        
+        variant_id=str(chrom)+"_"+str(pos)
+        distance_motif = 0
+        indel_seq=refFA.fetch(chrom,pos,pos + len(up_MH)).upper()
+
+        indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
+        if (indelNs>-3):
+            print("N found in indel")
+            return('error')
+        else:
+            return(chrom,pos,variant_id,ancestral_state_vcf,derived_state_vcf,distance_motif)
+
+
+def fa2deletion(refFA,chrom,pos,min_length,X_length):
+    """Function to create deletions on a fasta file giving outuput in vcf format. First and last 2kbp of chromosomes should not be used.
+    Arguments are:
+    refFA: a reference fasta file in pysam format
+    chrom: the chromosome to be mutated
+    pos: the start (0-based) position of the mutation, i.e. if you want to delete position 121 and 122 you need to set 120
+    min_length: minimum length of indel
+    max_length: minimum length of indel
+    Output has indel_length in addition to vcf-like annotation.
+    """
+    #indel_length=random.sample(range(min_length,max_length+1),1)[0]
+    indel_length=X_length
+
+    ancestral_state_vcf=refFA.fetch(chrom,pos-1,pos+indel_length).upper()
+    derived_state_vcf=refFA.fetch(chrom,pos-1,pos).upper()
+    
+    indel_seq = refFA.fetch(chrom,pos,pos+indel_length).upper()
+   
+    variant_id=str(chrom)+"_"+str(pos)
+    distance_motif = 0
+    indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
+    if (indelNs>-3):
+        print("N found in indel")
+        return('error')
+    else:
+        return(chrom,pos,variant_id,ancestral_state_vcf,derived_state_vcf,distance_motif)
+
+
+def casual_sequence(lunghezza, seed=None):
+    """Genera una sequenza genomica casuale composta da A, C, G, T."""
+    if seed is not None:
+        random.seed(seed)
+    return "".join(random.choices("ACGT", k=lunghezza))
+        
+def random_substitution(refFA,chrom,pos,min_length,max_length):
+    """Function to create substitutions on a fasta file giving outuput in vcf format. First and last 2kbp of chromosomes should not be used.
+    Arguments are:
+    refFA: a reference fasta file in pysam format
+    chrom: the chromosome to be mutated
+    pos: the start (0-based) position of the mutation, i.e. if you want to replace position 121 and 122 you need to set 120
+    min_length: minimum length of indel
+    max_length: minimum length of indel
+    Output has indel_length in addition to vcf-like annotation.
+    """
+    
+
+    X_length=random.sample(range(2,max_length+1),1)[0]
+    X_seq=indel_seq=refFA.fetch(chrom,pos,pos+X_length).upper()
+   
+    Z_length=random.sample(range(2,max_length+1),1)[0]
+    #Y_length=random.sample(range(100,100+max_length+1),1)[0]
+    #Z_seq=indel_seq=refFA.fetch(chrom,pos+X_length+Y_length,pos+X_length+Y_length+Z_length).upper()
+    Z_seq=casual_sequence(Z_length)
+    print("X_length: "+str(X_length))
+    #print("Y_length: "+str(Y_length))
+    print("Z_length: "+str(Z_length))
+
+    seq_window=refFA.fetch(chrom,pos,pos+100)
+    #print("seq_window: "+seq_window)
+    
+    distance_motif = 0
+    #removing of the same nt at the beginning and at the end of ANC and DER, 
+    #the number of the nt removed at the start of ANC and DER is used to slide the pos forward
+    anc_slide, der_slide, NT_removed_suffix, NT_removed_prefix, total_NT_removed = sliding_vcf (X_seq,Z_seq)
+    print("anc_slide: "+anc_slide)
+    print("der_slide: "+der_slide)
+    print("NT_removed_suffix: "+ str(NT_removed_suffix))
+    print("NT_removed_prefix: " +str(NT_removed_prefix))
+    pos_slide=pos+NT_removed_prefix
+    variant_id=str(chrom)+"_"+str(pos_slide)
+    print(variant_id)  
+    if anc_slide == der_slide:
+        return('error')
+    else:
+        indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
+        if (indelNs>-3):
+            print("N found in indel")
+            return('error')
+        else:
+            return(chrom,pos_slide,variant_id,anc_slide, der_slide,distance_motif)
+    
+
+#def fa2deletion_MMEJ(refFA,chrom,pos,MH_length,max_distance_MMEJ):
+def fa2deletion_MMEJ(refFA,chrom,pos,MH_length,X_length):
+    """Function to create deletions arising from MMEJ on a fasta file giving outuput in vcf format. First and last 2kbp of chromosomes should not be used.
+    Arguments are:
+    refFA: a reference fasta file in pysam format
+    chr: the chromosome to be mutated
+    pos: the start (0-based) position of the DSB, i.e. if you want to delete position 121 and 122 you need to set 120
+    MH_length: length of Microhomology motif
+    max_distance_MMEJ: max distance between cut site and Microhomology motif
+    """
+    MH_seq=refFA.fetch(chrom,pos-MH_length,pos)
+    #seq_window=refFA.fetch(chrom,pos,pos+MH_length+max_distance_MMEJ)
+    seq_window=refFA.fetch(chrom,pos,pos+MH_length+X_length)
+    #seq_window=refFA.fetch(chrom,pos,pos+X_length)
+    #seq_window_fabio=refFA.fetch(chrom,pos-MH_length,pos+max_distance_MMEJ)
+    print(seq_window)
+    print(MH_length)
+    print(X_length)
+    i_MH=seq_window.find(MH_seq)
+    if i_MH < 0:
+        print("no MH possible in range")
+        return("error")
+    else:
+        indel_length=i_MH+MH_length
+        indel_seq=refFA.fetch(chrom,pos,pos+i_MH+MH_length)
+        
+        print("MH motif: "+MH_seq)
+        print("MH|DEL|DEL MH: ")
+        print(refFA.fetch(chrom,pos-MH_length,pos)+"|"+refFA.fetch(chrom,pos,pos+indel_length-MH_length)+"|"+refFA.fetch(chrom,pos+indel_length-MH_length,pos+indel_length) )
+        
+        ancestral_state_vcf=refFA.fetch(chrom,pos-1,pos+indel_length).upper()
+        derived_state_vcf=refFA.fetch(chrom,pos-1,pos).upper()
+        distance_motif=0
+        variant_id=str(chrom)+"_"+str(pos)
+        indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
+        if (indelNs>-3):
+            print("N found in indel")
+            return('error')
+        else:
+            return(chrom,pos,variant_id,ancestral_state_vcf,derived_state_vcf,distance_motif)
+
+def fa2insertion(refFA,chrom,pos,min_length,max_length):
+    """Function to create insertions on a fasta file giving outuput in vcf format. First and last 2kbp of chromosomes should not be used.
+    Insertion sequences are generated by transposition, copying a region in the nearby 2000bp.
+    Arguments are:
+    refFA: a reference fasta file in pysam format
+    chr: the chromosome to be mutated
+    pos: the start (0-based) position of the mutation, i.e. if you want to delete position 121 and 122 you need to set 120
+    min_length: minimum length of indel
+    max_length: minimum length of indel
+    """
+    #indel_length=random.sample(range(min_length,max_length+1),1)[0]
+    indel_length=max_length
+    # --- taking the source_pos of the ref in a the pos surrounding window 
+    window_start =  pos - 200      # non andare sotto 0 (inizio cromosoma)
+    window_end = pos + 200
+
+    # deleting indel_length from window_end range valido [window_start, window_end - indel_length]
+    max_start = window_end - indel_length
+    source_pos = random.randint(window_start, max_start)
+    
+    print("source_pos: " + str(source_pos))
+    # get the random seq from the random source_pos 
+    indel_seq = refFA.fetch(chrom, source_pos, source_pos + indel_length)
+   
+    ancestral_state_vcf=refFA.fetch(chrom,pos-1,pos).upper()
+    derived_state_vcf=(refFA.fetch(chrom,pos-1,pos)+indel_seq).upper()
+    variant_id=str(chrom)+"_"+str(pos)
+    distance_motif=0
+    indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
+    if (indelNs>-3 or indel_length==0 or ancestral_state_vcf=="N" or ancestral_state_vcf=="-" or ancestral_state_vcf=="n"):
+        print("N or NULL found in indel")
+        return('error')
+    else:
+        return(chrom,pos,variant_id,ancestral_state_vcf,derived_state_vcf,distance_motif)
+
+
+def fa2insertion_snapback(refFA,chrom,pos,MH_length,SD_motif_length,max_distance,pre_SD_length=0):
+    """Function to create snapback insertions on a fasta file giving outuput in vcf-like entries. First and last 2kbp of chromosomes should not be used.
+    Arguments are:
+    refFA: a reference fasta file in pysam format
+    chr: the chromosome to be mutated
+    pos: the start (0-based) position of the DSB
+    MH_length: length of Microhomology motif
+    SD_motif_length: length of SD motif
+    max_distance: starts from end deletion of step1
+    pre_SD_length: standard snapback have SD starting right after Microhomology motif. By setting this to >0 one can change that.
+    Output has indel_length in addition to vcf-like annotation.
+    """
+    #identifing MH, SD (P) and the window
+    SD_motif=refFA.fetch(chrom,pos+pre_SD_length,pos+SD_motif_length+pre_SD_length)
+    MH_seq=refFA.fetch(chrom,pos-MH_length,pos)
+    seq_window=refFA.fetch(chrom,pos+SD_motif_length+pre_SD_length+1,pos+pre_SD_length+max_distance-1)
+    seq_window_fabio=refFA.fetch(chrom,pos-MH_length,pos+max_distance-1)
+    #seq_window_fabio is only for the print
+    #1° MH is always in position 0 in seq_window_fabio
+    #create the revc of the SD_motif and search it after the length of 1° SD_length
+    SD_revc=seq2revcomplement(SD_motif)
+    Y_length=seq_window.find(SD_revc)+pre_SD_length + 1 #cerca 1 nt dopo SD, 1 nt is necessary for the bending of the strand
+    #print("seq window from 1° MH : "+seq_window_fabio)
+    #print("seq window from  : "+seq_window)
+    #print("MH seq: "+MH_seq)
+    #print("SD motif: "+SD_motif)
+    #print("position 2nd SD motif from 1° SD motif, snapback_loop: "+str(Y_length))
+    # Y_length must be at mininum 1, because 1 nt is necessary due to the formation of the loop 
+    if Y_length < 1:
+        print("no SD possible in range")
+        return("error")
+    else:
+        Y_length_SD_motif_length=Y_length+SD_motif_length
+        #here i_SD is distance between the last nt 1° SD and  2° SD 
+        seq_window=refFA.fetch(chrom,pos+SD_motif_length+pre_SD_length+Y_length_SD_motif_length,pos+max_distance)
+        #once the SD (P) has been founded i search the rec of MH
+        MH_revc=seq2revcomplement(MH_seq)
+        Z_length=seq_window.find(MH_revc)
+        if Z_length < 1:
+            print("no MH possible in range")
+            return("error")
+        else:
+            #identified the indel length = Z_length = the seq between 2°SD and 2°MH that is replicated and inserted
+            indel_length=Z_length
+            #indel_length thanks to the distance between 2° SD and 2° MH 
+            print("distance between SDrevc and MHrevc i_MH == length of insertion : "+str(indel_length))
+            print("MH|SD|snapback-loop|SDrevc|INSrevc|MHrevc: ")#creating a useful print in the log of before mechanism context 
+            
+            indel_seq_annotated=refFA.fetch(chrom,pos-MH_length,pos)+"|"+refFA.fetch(chrom,pos,pos+SD_motif_length) +"|"+refFA.fetch(chrom,pos+SD_motif_length,pos+SD_motif_length+Y_length)+"|"+refFA.fetch(chrom,pos+SD_motif_length+Y_length,pos+SD_motif_length+Y_length+SD_motif_length)+"|"+refFA.fetch(chrom,pos+SD_motif_length+Y_length+SD_motif_length,pos+SD_motif_length+Y_length+SD_motif_length+Z_length)+"|"+refFA.fetch(chrom,pos+SD_motif_length+Y_length+SD_motif_length+Z_length,pos+SD_motif_length+Y_length+SD_motif_length+Z_length+MH_length)
+
+            #the inserted sequence is the revc of the sequence between 2°SD and 2°MH
+            indel_seq=seq2revcomplement(refFA.fetch(chrom,pos+SD_motif_length+Y_length+SD_motif_length,pos+SD_motif_length+Y_length+SD_motif_length+Z_length))
+            seq_after_insertion=refFA.fetch(chrom,pos-MH_length,pos)+"|"+str(indel_seq)+"|"+refFA.fetch(chrom,pos,pos+SD_motif_length) +"|"+refFA.fetch(chrom,pos+SD_motif_length,pos+SD_motif_length+Y_length)+"|"+refFA.fetch(chrom,pos+SD_motif_length+Y_length,pos+SD_motif_length+Y_length+SD_motif_length)+"|"+refFA.fetch(chrom,pos+SD_motif_length+Y_length+SD_motif_length,pos+SD_motif_length+Y_length+SD_motif_length+Z_length)+"|"+refFA.fetch(chrom,pos+SD_motif_length+Y_length+SD_motif_length+Z_length,pos+SD_motif_length+Y_length+SD_motif_length+Z_length+MH_length)
+
+
+            
+            indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
+            #creating ANC adn DER with the nt anchor
+            ancestral_state_vcf=refFA.fetch(chrom,pos-1,pos).upper()
+            derived_state_vcf=(refFA.fetch(chrom,pos-1,pos)+indel_seq).upper()
+            variant_id=str(chrom)+"_"+str(pos) 
+        
+            if (indelNs>-3 or indel_length==0 or ancestral_state_vcf=="N" or ancestral_state_vcf=="-" or ancestral_state_vcf=="n"):
+                print("N found in indel")
+                return('error')
+            else:
+                #print(indel_seq_annotated)
+                #print("after insertion:")
+                #print("MH|INS|SD|snapback-loop|SDrevc|INSrevc|MHrevc")
+                #print(seq_after_insertion)
+                distance_motif=Y_length+len(MH_seq)
+                return(chrom,pos,variant_id,ancestral_state_vcf,derived_state_vcf,distance_motif)
+
+
+
+def fa2deletion_snapback(refFA,chrom,pos,MH_length,SD_motif_length,max_distance,X_length,pre_SD_length=0):
+    """Function to create snapback deletions on a fasta file giving outuput in vcf-like entries.
+    It happens when Z>0 and X=0.
+    First and last 2kbp of chromosomes should not be used.
+    Arguments are:
+    refFA: a reference fasta file in pysam format
+    chr: the chromosome to be mutated
+    pos: the start (0-based) position of the DSB
+    MH_length: length of Microhomology motif
+    SD_motif_length: length of SD motif
+    max_distance: starts from end deletion of step1
+    X_length or Z_length:seq between 1°MH and 1°SD (removed sequence)
+    pre_SD_length: standard snapback deletion have 2°SD starting right after 2° MH. By setting this to >0 one can change that.
+    here pos indicate the position of rhe MH|Sd that mediates the deletion
+    Output has indel_length in addition to vcf-like annotation.
+    """
+    #identifing MH,SD, ans Z
+    SD_motif=refFA.fetch(chrom,pos+X_length,pos+X_length+SD_motif_length)
+    MH_seq=refFA.fetch(chrom,pos-MH_length,pos)
+    X_seq=refFA.fetch(chrom,pos,pos+X_length)
+
+    #seq_window=the seq where the we search the MHrevc motif, it starts from 1nt after the first SD to max distance
+    seq_window=refFA.fetch(chrom,pos+X_length+SD_motif_length+1,pos+max_distance-1)
+    seq_window_fabio=refFA.fetch(chrom,pos-MH_length,pos+max_distance-1)
+    #seq_window_fabio is only for the print
+    #1° MH is always in position 0 in seq_window_fabio
+    #create the revc of SD ad search it after pre_SD_length
+    SD_revc=seq2revcomplement(SD_motif)
+    Y_length=seq_window.find(SD_revc)+1
+    #Y_length is the distance between SD motif and SDrevc motif, +1 because +1 in the seq.window  
+    #print(" Y_length: "+str(Y_length))
+    #print("seq window: "+seq_window_fabio)
+    #print("MH seq: "+MH_seq)
+    #print("SD motif: "+SD_motif)
+    #print("X_seq - deleted seq -  "+X_seq)
+    #print("distance between SD motif and SDrevc motif, snapback-loop: "+str(Y_length))
+    
+    if Y_length < 1:
+        print("no SD possible in range")
+        return("error")
+    else:
+        Y_length_SD=Y_length+SD_motif_length
+        #spacer + 2°SD
+        #seq_window=refFA.fetch(chrom,pos+i_SD+SD_motif_length,pos+max_distance)
+        #create the revc of Mh ad searching right after the 2°SSD position in an windows with the same length of the 1° window
+        seq_window=refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length_SD,pos+X_length+SD_motif_length+Y_length_SD+MH_length)
+        #seq_window is the window after the 2° SD, its length is egual to MH_length
+        MH_revc=seq2revcomplement(MH_seq)
+        i_MH=seq_window.find(MH_revc)  
+        if i_MH != 0:
+            print("no MH possible in range")
+            return("error")
+        else:
+            #if i_MH is 0, MHrevc is after SDrevc, creating the BR motif 
+            Y_B_R=Y_length+SD_motif_length+MH_length
+            indel_length=X_length #the indel length is the same length of X
+            #print("SD_revc: "+SD_revc)
+            #print("MH_revc: "+MH_revc)
+            print("distance between MH and SD = Z_length == length deletion: "+str(indel_length))
+            #print("MH|DEL X |SD|snapback-loop|SDrevc|MHrevc: ")# creating a useful print in the log of before mechanism context
+
+            
+            indel_seq_annotated=refFA.fetch(chrom,pos-MH_length,pos)+"|"+refFA.fetch(chrom,pos,pos+X_length)+"|"+refFA.fetch(chrom,pos+X_length,pos+X_length+SD_motif_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length,pos+X_length+SD_motif_length+Y_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length,pos+X_length+SD_motif_length+Y_length+MH_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length+MH_length,pos+X_length+SD_motif_length+Y_length+MH_length+SD_motif_length)
+            
+            print(indel_seq_annotated)
+
+            indel_seq=X_seq           
+            indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
+            #the genomic contex after the mechanism
+            seq_after_deletion=refFA.fetch(chrom,pos-MH_length,pos)+"|"+refFA.fetch(chrom,pos+X_length,pos+X_length+SD_motif_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length,pos+X_length+SD_motif_length+Y_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length,pos+X_length+SD_motif_length+Y_length+MH_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length+MH_length,pos+X_length+SD_motif_length+Y_length+MH_length+SD_motif_length)
+            
+
+            #creating ANC adn DER with the nt anchor
+            derived_state_vcf=refFA.fetch(chrom,pos-1,pos).upper()
+            ancestral_state_vcf=(refFA.fetch(chrom,pos-1,pos)+indel_seq).upper()
+            
+            variant_id=str(chrom)+"_"+str(pos)
+                        
+            if (indelNs>-3 or indel_length==0 or ancestral_state_vcf=="N" or ancestral_state_vcf=="-" or ancestral_state_vcf=="n"):
+                print("N found in indel")
+                return('error')
+            else:
+                #print(indel_seq_annotated)
+                #print("after deletion")
+                #print("MH|SD|snapback-loop|SDrevc|MHrevc: ")
+                #print(seq_after_deletion)
+                distance_motif=Y_length+len(MH_seq)+X_length
+                return(chrom,pos,variant_id,ancestral_state_vcf,derived_state_vcf,distance_motif)
+
+
+
+def fa2SD_direct_insertion(refFA,chrom,pos,MH_length,SD_motif_length,max_distance,pre_SD_length=0):
+    """Function to create scars of a SD-direct insertion, no matter if trans or loop-out.
+    It happens when Z=0, X>0.
+    DSB repair on a fasta file giving outuput in vcf-like entries. First and last 2kbp of chromosomes should not be used.
+    Arguments are:
+    refFA: a reference fasta file in pysam format
+    chr: the chromosome to be mutated
+    pos: the start (0-based) position of the DSB
+    MH_length: length of Microhomology motif
+    SD_motif_length: length of SD motif
+    max_distance: starts from end deletion of step1
+    pre_SD_length: standard SD-loopouts have SD starting right after Microhomology motif. By setting this to >0 one can change that.
+    Output has indel_length in addition to vcf-like annotation.
+    """
+    #creating MH and SD according to the drawings and searching it in the seq_window
+    MH_seq=refFA.fetch(chrom,pos-MH_length,pos)
+    SD_motif=refFA.fetch(chrom,pos+pre_SD_length,pos+pre_SD_length+SD_motif_length)
+    seq_window=refFA.fetch(chrom,pos+SD_motif_length+pre_SD_length,pos+max_distance-1)
+    seq_window_fabio=refFA.fetch(chrom,pos-MH_length,pos+max_distance - 1)
+    Y_lenght=seq_window.find(MH_seq) #=position of MH from 1°SD to seq window
+    print("seq window from 1° MH: "+seq_window_fabio)
+    print("MH seq: "+MH_seq)
+    print("SD motif: "+SD_motif)
+    print("distance between 1°SD and 2° MH,spacer seq - Y:  "+str(Y_lenght))
+    #the 1° MH is always at 0 pos in seq_window_fabio
+    if Y_lenght < 0:
+        print("no MH possible in range")
+        return ("error")
+    else:
+        Y_lenght_MH_motif_length=Y_lenght+MH_length
+        print("Y_length: "+str(Y_lenght))
+        seq_window=refFA.fetch(chrom,pos+SD_motif_length+Y_lenght_MH_motif_length,pos+max_distance)
+        #up here seq_window is from 2°MH to max distance, it's used to find 2°SD
+        Z_length=seq_window.find(SD_motif)
+        if Z_length < 1:
+            print("no SD possible in range")
+            return "error" 
+        else:
+            print("Z_length: "+str(Z_length))
+            
+            indel_length=Z_length
+            #indel_length= distance from 2° MH to 2° SD == Z_length the seq that is replicated and inserted
+            print("distance between 2° MH and 2° SD - i_SD == length insertion: "+str(indel_length))
+            print("MH|SD|spacer seq between two patterns|MH|INS|SD: ") 
+            #creating a useful print in the log about the genomic context before the repair mechanism
+            indel_seq_annotated=refFA.fetch(chrom,pos-MH_length,pos,)+"|"+refFA.fetch(chrom,pos,pos+SD_motif_length) +"|"+refFA.fetch(chrom,pos+SD_motif_length,pos+SD_motif_length+Y_lenght)+"|"+refFA.fetch(chrom,pos+SD_motif_length+Y_lenght,pos+SD_motif_length+Y_lenght_MH_motif_length)+"|"+refFA.fetch(chrom,pos+SD_motif_length+Y_lenght_MH_motif_length,pos+SD_motif_length+Y_lenght_MH_motif_length+Z_length)+"|"+refFA.fetch(chrom,pos+SD_motif_length+Y_lenght_MH_motif_length+Z_length,pos+SD_motif_length+Y_lenght_MH_motif_length+Z_length+MH_length)
+            
+            #creating a useful print in the log about the genomic context before the repair mechanism
+            seq_after_insertion=refFA.fetch(chrom,pos-MH_length,pos,)+"|"+refFA.fetch(chrom,pos+SD_motif_length+Y_lenght_MH_motif_length,pos+SD_motif_length+Y_lenght_MH_motif_length+Z_length)+"|"+refFA.fetch(chrom,pos,pos+SD_motif_length) +"|"+refFA.fetch(chrom,pos+SD_motif_length,pos+SD_motif_length+Y_lenght)+"|"+refFA.fetch(chrom,pos+SD_motif_length+Y_lenght,pos+SD_motif_length+Y_lenght_MH_motif_length)+"|"+refFA.fetch(chrom,pos+SD_motif_length+Y_lenght_MH_motif_length,pos+SD_motif_length+Y_lenght_MH_motif_length+Z_length)+"|"+refFA.fetch(chrom,pos+SD_motif_length+Y_lenght_MH_motif_length+Z_length,pos+SD_motif_length+Y_lenght_MH_motif_length+Z_length+MH_length)
+            
+
+            
+            indel_seq=refFA.fetch(chrom,pos+SD_motif_length+Y_lenght_MH_motif_length,pos+SD_motif_length+Y_lenght_MH_motif_length+Z_length)
+            #indel_seq = from pos, + distance between 2° SD and 2° MH + length of MH to 2°SD from the the last nt of 2° MH
+            #create ANC and DER and adding the nt anchor
+            ancestral_state_vcf=refFA.fetch(chrom,pos-1,pos).upper()
+            derived_state_vcf=(refFA.fetch(chrom,pos-1,pos)+indel_seq).upper()
+            print("Y_lenght: "+str(Y_lenght))
+            variant_id=str(chrom)+"_"+str(pos)
+            
+            indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
+            if (indelNs>-3 or indel_length==0 or ancestral_state_vcf=="N" or ancestral_state_vcf=="-" or ancestral_state_vcf=="n"):
+                print("N found in indel")
+                return('error')
+            else:
+                #print(indel_seq_annotated)
+                #print("after insertion:")
+                #print("MH|INS|SD|spacer seq between two patterns|MH|INS|SD: ")
+                #print(seq_after_insertion)
+                distance_motif=Y_lenght+len(MH_seq)
+                return(chrom,pos,variant_id,ancestral_state_vcf,derived_state_vcf,distance_motif)
+
+def fa2SD_direct_deletion(refFA,chrom,pos,MH_length,SD_motif_length,max_distance,X_length,pre_SD_length=0):
+    """Function to create scars of a SD-direct_deletion, no matter if trans or loop-out.
+    It occur when x>0 and z = 0
+    DSB repair on a fasta file giving outuput in vcf-like entries.
+    First and last 2kbp of chromosomes should not be used. 
+    MH_seq = seq of MH
+    SD_motif= seq of SD
+    i_MH=position of MH from the start of seq window
+    Arguments are:
+    refFA: a reference fasta file in pysam format
+    chr: the chromosome to be mutated
+    pos: the start (0-based) position of the DSB
+    MH_length: length of Microhomology motif
+    SD_motif_length: length of SD motif
+    max_distance: starts from end deletion of step1
+    X_length: seq between 1°MH and 1°SD that is deleted
+    pre_SD_length= here is the distance between 2°MH and 2°SD that is always 0 but you can change that as you want
+    Output has indel_length in addition to vcf-like annotation.
+    i converted anc into der e der rather than insertion, here the pos is the position of the seqeunce that mediates the deletion of sthe seq between MH2 and SD2
+    """
+    #creating MH,SD and X seq according to te drawings
+    MH_seq=refFA.fetch(chrom,pos-MH_length,pos)
+    SD_motif=refFA.fetch(chrom,pos+X_length,pos+X_length+SD_motif_length)
+    seq_window=refFA.fetch(chrom,pos+X_length+SD_motif_length,pos+max_distance-1) #from SD to maxdistance   
+    X_seq=refFA.fetch(chrom,pos,pos+X_length)
+    seq_window_fabio=refFA.fetch(chrom,pos-MH_length,pos+max_distance - 1) #from pos to max distance
+    #seq_window_back_50=refFA.fetch(chrom,pos-50,pos)
+    #print("seq window from - 50 to + MH: " + seq_window_back_50)
+    #searching MH in the seq_window 
+    i_MH=seq_window.find(MH_seq) #=position of MH from SD in seq window
+    #pos of the sequence MH|SD that mediates the deletion of sequence where occur the DSB
+    print("seq window from 1° MH to max distance: "+seq_window_fabio)
+    print("MH seq: "+MH_seq)
+    print("SD motif: "+SD_motif)
+    print("X_seq - deleted seq - " + X_seq)
+    print("spacer seq between 1°SD and 2°MH : "+str(i_MH)) 
+    if i_MH < 0:
+        print("no MH possible in range")
+        return("error")
+    else:
+        i_MH2=i_MH+MH_length+pre_SD_length
+        #i_MH2= spacer+ MH_length, limite fra 2°MH e 2°SD
+        seq_window=refFA.fetch(chrom,pos+X_length+SD_motif_length+i_MH2,pos+X_length+SD_motif_length+i_MH2+SD_motif_length) 
+        #searching the 2° SD right after the 2°MH in a window that has the same length of SD 
+        #down here seq_window is from 2°MH to max SD_motif_length
+        i_SD=seq_window.find(SD_motif) 
+        #position of 2° SD from the end of 2° MH che in questo caso è sempre 0
+        if i_SD != 0:
+            #print("no SD possible in range")
+            return("error") 
+        else:
+            i_SD=X_length+i_MH2+SD_motif_length
+            #up here i_sd is the position of 2° SD from the last nt of 1° MH 
+            #indel_length=i_SD-i_MH-MH_length
+            indel_length=X_length
+            #indel is distance from 2° SD and the 1° SD - distance from 2° SD and 2°MH - length MH
+            print("distance between 1°MH and 1° SD == length deletion : "+str(indel_length))
+            print("MH|DEL X |SD|spacer seq between two patterns|MH|SD: ") 
+            #creating a useful print in the log that rappresent the genomic context before the mechanism
+            indel_seq_annotated=refFA.fetch(chrom,pos-MH_length,pos)+"|"+refFA.fetch(chrom,pos,pos+X_length)+"|"+refFA.fetch(chrom,pos+X_length,pos+X_length+SD_motif_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length,pos+X_length+SD_motif_length+i_MH)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+i_MH,pos+X_length+SD_motif_length+i_MH+MH_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+i_MH+MH_length,pos+X_length+SD_motif_length+i_MH+MH_length+SD_motif_length)
+            
+            indel_seq=refFA.fetch(chrom,pos,pos+X_length)
+            #indel_seq = from pos, + distance between 1° MH and 1° SD = X_length
+            seq_after_deletion=refFA.fetch(chrom,pos-MH_length,pos)+"|"+refFA.fetch(chrom,pos+X_length,pos+X_length+SD_motif_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length,pos+X_length+SD_motif_length+i_MH)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+i_MH,pos+X_length+SD_motif_length+i_MH+MH_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+i_MH+MH_length,pos+X_length+SD_motif_length+i_MH+MH_length+SD_motif_length)
+            #creating ANC and DER and adding the nt anchor
+            derived_state_vcf=refFA.fetch(chrom,pos-1,pos).upper()
+            ancestral_state_vcf=(refFA.fetch(chrom,pos-1,pos)+indel_seq).upper()
+            variant_id=str(chrom)+"_"+str(pos)
+            indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
+            if (indelNs>-3 or indel_length==0 or ancestral_state_vcf=="N" or ancestral_state_vcf=="-" or ancestral_state_vcf=="n"):
+                print("N found in indel")
+                return('error')
+            else:
+                print(indel_seq_annotated)
+                print("after deletion:")
+                print("MH|SD|spacer seq between two patterns|MH|SD: ")
+                print(seq_after_deletion)
+                distance_motif=i_MH + len(X_seq)+len(MH_seq)
+                return(chrom,pos,variant_id,ancestral_state_vcf,derived_state_vcf,distance_motif)
+
+def fa2SD_direct_substitution(refFA,chrom,pos,MH_length,SD_motif_length,max_distance,X_length): 
+    """Function to create scars of a SD-direct_substitution, no matter if trans or loop-out.
+    It occur when Z>0 and X > 0
+    DSB repair on a fasta file giving outuput in vcf-like entries.
+    First and last 2kbp of chromosomes should not be used. 
+    MH_seq = seq of MH
+    SD_motif= seq of SD
+    Z_seq = seq between MH and SD(replaced by X)
+
+    i_MH=position of MH from the start of seq window
+    Arguments are:
+    refFA: a reference fasta file in pysam format
+    chr: the chromosome to be mutated
+    pos: the start (0-based) position of the DSB
+    MH_length: length of Microhomology motif
+    SD_motif_length: length of SD motif
+    max_distance: starts from end deletion of step1
+    X_length: length of the sequence between MH and SD, is the replaced sequence. 
+    By setting this to >0 one can change that.
+    Output has indel_length in addition to vcf-like annotation.
+    """
+    #identification ofMH, S, X seq according to the drawings
+    MH_seq=refFA.fetch(chrom,pos-MH_length,pos) 
+    SD_motif=refFA.fetch(chrom,pos+X_length,pos+X_length+SD_motif_length) 
+    #X_length= replaced seq
+    X_seq=refFA.fetch(chrom,pos,pos+X_length)
+    seq_window=refFA.fetch(chrom,pos+X_length+SD_motif_length,
+            pos+X_length+SD_motif_length+max_distance-1) #from SD to maxdistance
+    seq_window_fabio=refFA.fetch(chrom,pos-MH_length,pos+max_distance - 1) 
+    #searcing MH in seq.window 
+    Y_length=seq_window.find(MH_seq) #=position of 2°MH from 1°SD in seq window
+    print("seq window from 1° MH: "+seq_window_fabio)
+    print("MH seq: "+MH_seq)
+    print("SD motif: "+SD_motif)
+    print("X_seq: " + X_seq)
+    print("distance between 1°SD and 2° MH == Y i_MH: "+str(Y_length))
+    ##the 1° MH is always at 0 pos in seq_window_fabio
+    if Y_length < 0:
+        print("no MH possible in range")
+        return("error")
+    else:
+        #here i_MH is the pos of the last nt of 2° SD from 2° MH
+        seq_window=refFA.fetch(chrom,
+                pos+X_length+SD_motif_length+Y_length+MH_length,
+                pos+X_length+SD_motif_length+Y_length+MH_length+max_distance)
+        #up here seq_window is from 2°MH to max distance, it's used to find 2°SD 
+        #once we found MH we can search for SD
+        Z_length=seq_window.find(SD_motif) #position of 2° SD from the end of 2° MH
+        print("position of 2° SD from the end of 2° MH:  "+str(Z_length))
+        if Z_length < 1:
+            print("no SD possible in range")
+            return("error") 
+
+        else:
+            #indel_length=Z_length = distance from 2°MH to 2° SD H 
+            indel_length=Z_length
+            
+            print("distance between 2°MH and 2° SD == length of Z : "+str(indel_length))
+            #creating an useful print in the log about the genomic context before the mechanism 
+ #
+
+            indel_seq_annotated=refFA.fetch(chrom,pos-MH_length,pos)+"|"+refFA.fetch(chrom,pos,pos+X_length)+"|"+refFA.fetch(chrom,pos+X_length,pos+X_length+SD_motif_length) +"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length,pos+X_length+SD_motif_length+Y_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length,pos+X_length+SD_motif_length+Y_length+MH_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length+MH_length,pos+X_length+SD_motif_length+Y_length+MH_length+Z_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length+MH_length+Z_length,pos+X_length+SD_motif_length+Y_length+MH_length+Z_length++SD_motif_length)
+            
+            #Z seq that replaces X
+            indel_seq=refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length+MH_length,pos+X_length+SD_motif_length+Y_length+MH_length+Z_length).upper()# indel_seq = DER 
+            #X that is replaced
+            X_ANC_seq=refFA.fetch(chrom,pos,pos+X_length).upper() #Z_ANC_seq = ANC
+            
+            nt_anchor=refFA.fetch(chrom,pos-1,pos)
+            #creating an useful print in the log about the genomic context after the mechanism
+            seq_after_deletion=refFA.fetch(chrom,pos-MH_length,pos)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length+MH_length,pos+X_length+SD_motif_length+Y_length+MH_length+Z_length)+"|"+refFA.fetch(chrom,pos+X_length,pos+X_length+SD_motif_length) +"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length,pos+X_length+SD_motif_length+Y_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length,pos+X_length+SD_motif_length+Y_length+MH_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length+MH_length,pos+X_length+SD_motif_length+Y_length+MH_length+Z_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length+MH_length+Z_length,pos+X_length+SD_motif_length+Y_length+MH_length+Z_length++SD_motif_length)
+            
+            #anc, der = normalize_vcf(X_ANC_seq,indel_seq)
+            
+            #removing of the same nt at the beginning and at the end of ANC and DER, 
+            #the number of the nt removed at the start of ANC and DER is used to slide the pos forward
+            anc_slide, der_slide, NT_removed_suffix, NT_removed_prefix, total_NT_removed = sliding_vcf (X_ANC_seq,indel_seq)
+            #print("anc_slide: "+anc_slide)
+            #print("der_slide: "+der_slide)
+            #ANC and DER slided
+            if anc_slide == der_slide:
+                #print("ANC and DER are equal")
+                return('error')
+            else:
+                #print("NT_removed_suffix :"+str(NT_removed_suffix))
+                #print("number of pos slided :"+str(NT_removed_prefix))
+                print(total_NT_removed)
+                #print("pos: "+str(pos))
+                
+                #pos_slided is the pos + the number of the removed prefix
+                pos_slided = pos+NT_removed_prefix
+                #print("pos_slided: "+ str(pos_slided))
+                variant_id=str(chrom)+"_"+str(pos_slided)
+                
+                #i put the nt anchor first cause the vcf() it's not used anymor it's not used anymoree
+                
+                #derived_state_vcf=nt_anchor.upper()+der.upper()
+                #ancestral_state_vcf=nt_anchor.upper()+anc.upper()
+
+                indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
+                if (indelNs>-3 or indel_length==0 or anc_slide=="N" or anc_slide=="-" or anc_slide=="n"):
+                    print("N found in indel")
+                    return('error')
+                else:
+                    #print("MH|X|SD|spacer seq between two patterns|MH|Z|SD: ")
+                    #print(indel_seq_annotated)
+                    #print("after substitution:")
+                    #print("MH|SUB'Z'|SD|spacer seq between two patterns|MH|Z|SD: ")
+                    print(seq_after_deletion)
+                    distance_motif=len(MH_seq)+Y_length+X_length
+                    return(chrom,pos_slided,variant_id,anc_slide, der_slide,distance_motif)
+
+
+def fa2SD_snapback_substitution(refFA,chrom,pos,MH_length,SD_motif_length,max_distance,X_length): 
+    """Function to create scars of a SD_inverted_substitution, thanks to snapback mechanism.
+    It occur when Z>0 and X > 0
+    DSB repair on a fasta file giving outuput in vcf-like entries.
+    First and last 2kbp of chromosomes should not be used. 
+    MH_seq = seq of MH
+    SD_motif= seq of SD
+    Z_seq = seq between MH and SD (replaced by X)
+
+    i_MH=position of MH from the start of seq window
+    Arguments are:
+    refFA: a reference fasta file in pysam format
+    chr: the chromosome to be mutated
+    pos: the start (0-based) position of the DSB
+    MH_length: length of Microhomology motif
+    SD_motif_length: length of SD motif
+    max_distance: starts from end deletion of step1
+    pre_SD_length: standard SD-loopouts have SD starting right after Microhomology motif.
+    X_length: length of the sequence between MH and SD, is the replaced sequence.
+    By setting this to >0 one can change that.
+    Output has indel_length in addition to vcf-like annotation.
+    """
+
+    #identifing Mh. SD and X according to the drawings: 
+    MH_seq=refFA.fetch(chrom,pos-MH_length,pos) 
+    SD_motif=refFA.fetch(chrom,pos+X_length,pos+X_length+SD_motif_length) 
+    X_seq=refFA.fetch(chrom,pos,pos+X_length)
+    #from SD to SD + maxdistance
+    seq_window=refFA.fetch(chrom,
+            pos+X_length+SD_motif_length + 1 ,
+            pos+X_length+SD_motif_length + 1 +max_distance-1) #from SD to maxdistance
+    seq_window_fabio=refFA.fetch(chrom,pos-MH_length,pos+max_distance - 1) 
+    #create the revc of SD and search it in the window after X-Seq
+    SD_revc=seq2revcomplement(SD_motif)
+    print("SD_revc:" + SD_revc)
+    Y_length=seq_window.find(SD_revc) + 1  # from 1 nt after SD, 1 nt is necessary for the fomration of the loop
+    #print("Y_length: " + str(Y_length))
+    print("seq window from 1° MH: "+seq_window_fabio)
+    print("MH seq: "+MH_seq)
+    print("SD motif: "+SD_motif)
+    print("X_seq: " + X_seq)
+#the 1° MH is always at 0 pos in seq_window_fabio
+    if Y_length < 1:
+        print("no SD possible in range")
+        return("error")
+    else:
+        Y_length_SD_motif_length=Y_length+SD_motif_length
+        seq_window=refFA.fetch(chrom,
+                pos+X_length+SD_motif_length+Y_length_SD_motif_length,
+                pos+X_length+SD_motif_length+Y_length_SD_motif_length+max_distance)
+        #up here seq_window is from 2°SD to max distance, it's used to find 2°MH or MHrevc
+        #once we found SD, we can create the revc of MH and searching it in a wndow that start after SD_revc
+        MH_revc=seq2revcomplement(MH_seq)
+        Z_length=seq_window.find(MH_revc) #position of MH revc from the end of SDrevc
+        print("Z_length:"+str(Z_length))
+        if Z_length < 1:
+            print("no SD possible in range")
+            return("error") 
+
+        else:
+            Z_length_SD_motif_length=Z_length+SD_motif_length
+            #i_MH distance between 2° SD adn 2°MH  
+            indel_length=Z_length
+            #indel= distance from 2° SD to 2° MH
+            print("distance from 2° SD to 2°MH == length substitution : "+str(indel_length))
+            #creating an useful print in the log about the genomic context before the mechanism 
+            
+            indel_seq_annotated=refFA.fetch(chrom,pos-MH_length,pos)+"|"+refFA.fetch(chrom,pos,pos+X_length)+"|"+refFA.fetch(chrom,pos+X_length,pos+X_length+SD_motif_length) +"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length,pos+X_length+SD_motif_length+Y_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length,pos+X_length+SD_motif_length+Y_length_SD_motif_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length_SD_motif_length,pos+X_length+SD_motif_length+Y_length_SD_motif_length+Z_length) +"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length_SD_motif_length+Z_length,pos+X_length+SD_motif_length+Y_length_SD_motif_length+Z_length+MH_length)
+            
+            #Z revc
+            Z_seq=refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length_SD_motif_length,pos+X_length+SD_motif_length+Y_length_SD_motif_length+Z_length).upper()
+            print("Z_seq: " + Z_seq)
+            #but the revc of Z revc replaces X
+            indel_seq=seq2revcomplement(Z_seq)
+            print("indel_seq: " + indel_seq)
+            #X that is replaced
+            X_ANC_seq=refFA.fetch(chrom,pos,pos+X_length).upper()
+            print ("X_ANC_seq: "+ X_ANC_seq)
+            nt_anchor=refFA.fetch(chrom,pos-1,pos)
+            #creating an useful print in the log about the genomic context after the mechanism
+            seq_after_substitution=refFA.fetch(chrom,pos-MH_length,pos)+"|"+str(indel_seq)+"|"+refFA.fetch(chrom,pos+X_length,pos+X_length+SD_motif_length) +"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length,pos+X_length+SD_motif_length+Y_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length,pos+X_length+SD_motif_length+Y_length_SD_motif_length)+"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length_SD_motif_length,pos+X_length+SD_motif_length+Y_length_SD_motif_length+Z_length) +"|"+refFA.fetch(chrom,pos+X_length+SD_motif_length+Y_length_SD_motif_length+Z_length,pos+X_length+SD_motif_length+Y_length_SD_motif_length+Z_length+MH_length) 
+            
+            anc, der = normalize_vcf(X_ANC_seq,indel_seq)
+
+            #removing of the same nt at the beginning and at the end of ANC and DER, 
+            #the number of the nt removed at the start of ANC and DER is used to slide the pos forward
+
+            anc_slide, der_slide, NT_removed_suffix, NT_removed_prefix, total_NT_removed = sliding_vcf (X_ANC_seq,indel_seq)
+            print("anc_slide: "+anc_slide)
+            print("der_slide: "+der_slide)
+            if anc_slide == der_slide:
+                print("ANC and DER are equal")
+                return("error")
+            else:
+
+                print("NT_removed_suffix :"+str(NT_removed_suffix))
+                print("number of pos slided :"+str(NT_removed_prefix))
+                #print(total_NT_removed)
+                print("pos: "+str(pos))
+                #pos_slided = pos + number of removed prefix between ANC and DER
+                pos_slided = pos+NT_removed_prefix
+                print("pos_slided: "+ str(pos_slided))
+            
+                #i put the nt anchor first cause the vcf
+                derived_state_vcf=nt_anchor.upper()+indel_seq.upper()# i put the anchor for the happyness of vcf
+            
+                #ancestral_state_vcf=nt_anchor.upper()+X_ANC_seq.upper()
+                variant_id=str(chrom)+"_"+str(pos_slided)
+                ancestral_state_vcf=nt_anchor.upper()+anc.upper()
+                derived_state_vcf=nt_anchor.upper()+der.upper()
+
+                indelNs=indel_seq.find('N') + indel_seq.find('n') + indel_seq.find('-')
+                if (indelNs>-3 or indel_length==0 or ancestral_state_vcf=="N" or ancestral_state_vcf=="-" or ancestral_state_vcf=="n"):
+                    print("N found in indel")
+                    return('error')
+                else:
+                    print("MH|X|SD|spacer seq between two patterns|SDrevc|Zrevc|MHrevc: ")
+                    print(indel_seq_annotated)
+                    print("after substitution:")
+                    print("MH|SUB Z|SD|spacer seq between two patterns|MHrevc|Zrevc|SDrevc: ")
+                    print(seq_after_substitution)
+                    distance_motif=len(MH_seq)+Y_length+X_length
+                    return(chrom, pos_slided,variant_id,anc_slide,der_slide,distance_motif)
+                    
+
+
+#fastafile='GWHAAEV00000000.1.genome.fasta.gz'
+fastafile=args['ref']
+outfile=args['out']
+outfile2=args['out2']
+chrom=args['chrom']
+pos=args['pos']
+nsims=int(args['nsims'])
+xmechanism=args['mechanism']
+xMHlength=args['MHlength']
+xSDlength=args['SDlength']
+xmaxdistance=args['maxdistance']
+#inserito da fabio
+xX_length=args['X_length']
+verbose = args['verbose']
+
+refFA=FastaFile(fastafile)
+
+# dopo refFA=FastaFile(fastafile)
+MIN_CONTIG_LEN = 10000   # soglia da scegliere (>= 2*2000 + margine per il meccanismo)
+
+valid_contigs = [(c, l) for c, l in zip(refFA.references, refFA.lengths)
+                 if l >= MIN_CONTIG_LEN]
+if not valid_contigs:
+    raise ValueError(f"no contig had >= {MIN_CONTIG_LEN} bp in refa")
+
+valid_names   = [c for c, l in valid_contigs]
+valid_lengths = [l for c, l in valid_contigs]
+valid_len_dict = dict(valid_contigs)
+
+# ===========================================================================
+# EVENTO SECONDARIO ACCOPPIATO
+# Per ogni simulazione primaria valida si simula, a 2-15 nt a sinistra o a
+# destra, un secondo evento di tipo "NHEJ":
+#   - meccanismi che formano DELEZIONI    -> deletion_NHEJ  (fa2deletion)
+#   - meccanismi che formano INSERZIONI   -> random_insertion (fa2insertion)
+#   - meccanismi che formano SOSTITUZIONI -> random_substitution
+# ===========================================================================
+DELETION_MECHS = {"deletion_NHEJ", "deletion_MMEJ", "pol_slip_del",
+                  "SD_inverted_deletion", "SD_direct_deletion"}
+INSERTION_MECHS = {"pol_slip_ins", "SD_inverted_insertion",
+                   "random_insertion", "SD_direct_insertion"}
+SUBSTITUTION_MECHS = {"random_substitution", "SD_direct_substitution",
+                      "SD_inverted_substitution"}
+
+ALL_MECHS = DELETION_MECHS | INSERTION_MECHS | SUBSTITUTION_MECHS
+if xmechanism not in ALL_MECHS:
+    raise ValueError("unknown mechanism: " + str(xmechanism) +
+                     ". Choose one of: " + ", ".join(sorted(ALL_MECHS)))
+
+SHIFT_MIN, SHIFT_MAX = 2, 15      # distanza (nt) dell'evento secondario
+MAX_SECONDARY_TRIES = 50          # tentativi (lato/shift casuali) per ogni primario
+SEC_MARGIN = 300                  # margine dai bordi del contig (fa2insertion guarda +-200 nt)
+
+
+def secondary_mechanism_name(mech):
+    if mech in DELETION_MECHS:
+        return "deletion_NHEJ"
+    if mech in INSERTION_MECHS:
+        return "random_insertion"
+    return "random_substitution"
+
+
+def run_secondary(refFA, chrom, pos, mech):
+    if mech in DELETION_MECHS:
+        return fa2deletion(refFA, chrom, pos, xMHlength, X_length=xX_length)
+    if mech in INSERTION_MECHS:
+        return fa2insertion(refFA, chrom, pos, xMHlength, xmaxdistance)
+    return random_substitution(refFA, chrom, pos, xMHlength, xmaxdistance)
+
+
+def simulate_secondary(refFA, chrom, primary, mech):
+    """Dato l'evento primario, simula l'evento secondario a sinistra o a destra.
+    Sinistra: new_pos = pos_primario - shift
+    Destra  : new_pos = pos_primario + shift
+    Ritorna (res, side, shift) oppure None se non riesce."""
+    p_pos = primary[1]
+    chrom_len = refFA.get_reference_length(chrom)
+
+    for _ in range(MAX_SECONDARY_TRIES):
+        side = random.choice(["left", "right"])
+        shift = random.randint(SHIFT_MIN, SHIFT_MAX)
+        if side == "left":
+            new_pos = p_pos - shift
+        else:
+            new_pos = p_pos + shift
+        if new_pos < SEC_MARGIN or new_pos > chrom_len - SEC_MARGIN - xmaxdistance:
+            continue
+        res2 = run_secondary(refFA, chrom, new_pos, mech)
+        if res2 == "error":
+            continue
+        return res2, side, shift
+    return None
+
+
+counter_sims = 0
+myvcf = list()
+mysecondary = list()      # righe dell'output secondario, stesso ordine di myvcf
+seen_ids = set()
+seen_ids_sec = set()
+n_dropped_no_secondary = 0
+
+while len(myvcf) < nsims:
+    if (chrom == None):
+        xchr = random.choices(valid_names, weights=valid_lengths, k=1)[0]
+    else:
+        xchr = chrom
+    if (pos == None):
+        xpos = random.randint(2000, valid_len_dict[xchr] - 2000 - 1)
+    else:
+        xpos = int(pos)
+    print(xchr)
+    print(xpos)
+    if xmechanism=="deletion_MMEJ":
+        res=fa2deletion_MMEJ(refFA,xchr,xpos,xMHlength,X_length=xX_length)
+    elif xmechanism=="deletion_NHEJ":
+        res=fa2deletion(refFA,xchr,xpos,xMHlength,X_length=xX_length)
+    elif xmechanism=="pol_slip_del":
+        res=pol_slip_del(refFA,xchr,xpos,xMHlength,xmaxdistance)
+    elif xmechanism=="pol_slip_ins":
+        res=pol_slip_ins(refFA,xchr,xpos,xMHlength,xmaxdistance)
+    elif xmechanism=="SD_inverted_insertion":
+        res=fa2insertion_snapback(refFA,xchr,xpos,MH_length=xMHlength,SD_motif_length=xSDlength,max_distance=xmaxdistance)
+    elif xmechanism=="SD_inverted_deletion":
+        res=fa2deletion_snapback (refFA,xchr,xpos,MH_length=xMHlength,SD_motif_length=xSDlength,max_distance=xmaxdistance,X_length=xX_length)
+    elif xmechanism=="random_insertion":
+        res=fa2insertion(refFA,xchr,xpos,xMHlength,xmaxdistance)
+    elif xmechanism=="random_substitution":
+        res=random_substitution(refFA,xchr,xpos,xMHlength,xmaxdistance)
+    elif xmechanism=="SD_direct_insertion":
+        res=fa2SD_direct_insertion (refFA,xchr,xpos,xMHlength,xSDlength,xmaxdistance)
+    elif xmechanism=="SD_direct_deletion":
+        res=fa2SD_direct_deletion (refFA,xchr,xpos,xMHlength,xSDlength,max_distance=xmaxdistance,X_length=xX_length)
+    elif xmechanism=="SD_direct_substitution":
+        res=fa2SD_direct_substitution (refFA,xchr,xpos,xMHlength,xSDlength,xmaxdistance,xX_length)
+    elif xmechanism=="SD_inverted_substitution":
+        res=fa2SD_snapback_substitution (refFA,xchr,xpos,xMHlength,xSDlength,xmaxdistance,xX_length)
+
+    counter_sims=counter_sims+1
+
+    if res == "error":
+        print("error")
+        continue
+
+    vcf_id = str(res[0]) + "_" + str(res[1])
+    if vcf_id in seen_ids:
+        print("duplicate simulated vcf, skipping: " + vcf_id)
+        continue
+
+    # --- evento secondario accoppiato ---------------------------------------
+    sec = simulate_secondary(refFA, xchr, res, xmechanism)
+    if sec is None:
+        print("no valid secondary event for " + vcf_id + ", primary discarded")
+        n_dropped_no_secondary += 1
+        continue
+    res2, side, shift = sec
+    sec_id = str(res2[0]) + "_" + str(res2[1])
+    if sec_id in seen_ids_sec:
+        print("duplicate secondary vcf, skipping: " + sec_id)
+        continue
+
+    seen_ids.add(vcf_id)
+    seen_ids_sec.add(sec_id)
+    myvcf.append(res)
+    mysecondary.append(res2)
+    print(res)
+    print("secondary (" + secondary_mechanism_name(xmechanism) + ", " + side + ", " + str(shift) + " nt): " + str(res2))
+
+print("N of attempted simulations:" + str(counter_sims))
+print("primary events discarded because no secondary event was possible:" + str(n_dropped_no_secondary))
+cols = ['#CHR', 'POS', 'variant_id', 'REF', 'ALT']
+
+# --- output primario ----------------------------------------------------------
+if verbose:
+    mydf = pd.DataFrame([r[:6] for r in myvcf], columns=cols + ['distance_motif'])
+else:
+    mydf = pd.DataFrame([r[:5] for r in myvcf], columns=cols)
+
+mydf['ANC'] = 0
+
+if verbose:
+    mydf = mydf[cols + ['ANC', 'distance_motif']]
+
+# --- output secondario (stesse identiche colonne del primario) ---------------
+if verbose:
+    mysec_df = pd.DataFrame([r[:6] for r in mysecondary], columns=cols + ['distance_motif'])
+else:
+    mysec_df = pd.DataFrame([r[:5] for r in mysecondary], columns=cols)
+
+mysec_df['ANC'] = 0
+
+if verbose:
+    mysec_df = mysec_df[cols + ['ANC', 'distance_motif']]
+
+if outfile != None:
+    mydf.to_csv(outfile, sep="\t", index=None)
+    if outfile2 == None:
+        base, ext = os.path.splitext(outfile)
+        outfile2 = base + ".secondary" + ext
+    mysec_df.to_csv(outfile2, sep="\t", index=None)
+    print("primary output  : " + outfile)
+    print("secondary output: " + outfile2)

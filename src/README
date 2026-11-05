@@ -1,0 +1,16 @@
+ciao fabri:
+
+EM_10 è l'ultima versione del nostro EM, come flag ha:
+-i --input serve a inserire la tabella tsv di input derivante dalla detection
+-o --output dove vogliamo salvare l'output di EM
+ --mechanisms di quale meccanismo vogliamo stimare la presenza
+ --background su quale background noi vogliamo stimare il meccanismo (per delezioni: NHEJ, per inserzioni: RI, per sostituzioni RS)
+ --mh_breakdown questa flag è da inserire nel caso volessi dividere la presenza di un certo meccanismo in base a MH length, d ainserire solo se nella detection hai inserito -mhl 2,3,4 ecc.. 
+
+MicrohomologyV5 è lo script chaimato da RM detector che contine le funzioni capaci di individuare ogni meccanismo
+
+
+pysam_get_fasta contiene funzione come get_ref_seq che recupera la referenza, le funzioni chiamate in microhomology V5 per le distanze dei motivi
+
+realigment_module: funzioni per il reallineamento, funzione per le counterfactuals, funzione per il de collasso, funzioni per il setting dell'acentrasl state
+

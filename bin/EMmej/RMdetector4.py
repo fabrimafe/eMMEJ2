@@ -468,7 +468,20 @@ for mech,pat,col in zip(mechanism, patterns, cols):
 
 # ----------- Make this more efficient -------------------------------------
 
-df['observed'] = (df['POS'] == df['variant_id'].str.split('_').str[1].astype(int)).astype(int)
+#df['observed'] = (df['POS'] == df['variant_id'].str.split('_').str[1].astype(int)).astype(int)
+
+if 'de_collapse_id' not in df.columns:
+    df['de_collapse_id'] = '00'
+
+df['de_collapse_id'] = df['de_collapse_id'].fillna('00')
+orig_pos = df['variant_id'].str.split('_').str[-1].astype(int)
+
+df['observed'] = (
+        (df['POS'] == orig_pos) &
+        (df['de_collapse_id'] == '00')
+        ).astype(int)
+
+df['n_de_collapse'] = df['de_collapse_id'].apply(lambda s: sum(int(c) for c in s))
 
 col_to_save = ['CHR', 'POS','variant_id', #'REF','ALT',
             'ANC','DER','alignment_ID','direction', 'indel_type', 'indel_len', 'observed','de_collapse_id', 
