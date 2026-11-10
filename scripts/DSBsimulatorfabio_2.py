@@ -151,8 +151,8 @@ def fa2deletion(refFA,chrom,pos,min_length,max_length):
     max_length: minimum length of indel
     Output has indel_length in addition to vcf-like annotation.
     """
-    indel_length=random.sample(range(min_length,max_length+1),1)[0]
-
+    #indel_length=random.sample(range(min_length,max_length+1),1)[0]
+    indel_length=max_length+1
     ancestral_state_vcf=refFA.fetch(chrom,pos-1,pos+indel_length).upper()
     derived_state_vcf=refFA.fetch(chrom,pos-1,pos).upper()
     
@@ -186,10 +186,11 @@ def random_substitution(refFA,chrom,pos,min_length,max_length):
     """
     
 
-    X_length=random.sample(range(2,max_length+1),1)[0]
+    #X_length=random.sample(range(2,max_length+1),1)[0]
+    X_length=max_length+1
     X_seq=indel_seq=refFA.fetch(chrom,pos,pos+X_length).upper()
-   
-    Z_length=random.sample(range(2,max_length+1),1)[0]
+    max_length_2=max_length*2 
+    Z_length=random.sample(range(2,max_length_2+1),1)[0]
     #Y_length=random.sample(range(100,100+max_length+1),1)[0]
     #Z_seq=indel_seq=refFA.fetch(chrom,pos+X_length+Y_length,pos+X_length+Y_length+Z_length).upper()
     Z_seq=casual_sequence(Z_length)
@@ -232,8 +233,9 @@ def fa2deletion_MMEJ(refFA,chrom,pos,MH_length,max_distance_MMEJ):
     max_distance_MMEJ: max distance between cut site and Microhomology motif
     """
     MH_seq=refFA.fetch(chrom,pos-MH_length,pos)
-    seq_window=refFA.fetch(chrom,pos,pos+MH_length+max_distance_MMEJ)
-    seq_window_fabio=refFA.fetch(chrom,pos-MH_length,pos+max_distance_MMEJ)
+    max_distance_MMEJ_4=max_distance_MMEJ*4
+    seq_window=refFA.fetch(chrom,pos,pos+MH_length+max_distance_MMEJ_4)
+    seq_window_fabio=refFA.fetch(chrom,pos-MH_length,pos+max_distance_MMEJ_4)
     #print(seq_window_fabio)
     i_MH=seq_window.find(MH_seq)
     if i_MH < 0:
@@ -269,7 +271,7 @@ def fa2insertion(refFA,chrom,pos,min_length,max_length):
     max_length: minimum length of indel
     """
     indel_length=random.sample(range(min_length,max_length+1),1)[0]
-    
+    #indel_length=max_length+1
     # --- taking the source_pos of the ref in a the pos surrounding window 
     window_start =  pos - 200      # non andare sotto 0 (inizio cromosoma)
     window_end = pos + 200
@@ -294,7 +296,7 @@ def fa2insertion(refFA,chrom,pos,min_length,max_length):
         return(chrom,pos,variant_id,ancestral_state_vcf,derived_state_vcf,distance_motif)
 
 
-def fa2insertion_snapback(refFA,chrom,pos,MH_length,SD_motif_length,max_distance,pre_SD_length=0):
+def fa2insertion_snapback(refFA,chrom,pos,MH_length,SD_motif_length,max_distance,X_length,pre_SD_length=0):
     """Function to create snapback insertions on a fasta file giving outuput in vcf-like entries. First and last 2kbp of chromosomes should not be used.
     Arguments are:
     refFA: a reference fasta file in pysam format
@@ -308,8 +310,9 @@ def fa2insertion_snapback(refFA,chrom,pos,MH_length,SD_motif_length,max_distance
     """
     #identifing MH, SD (P) and the window
     SD_motif=refFA.fetch(chrom,pos+pre_SD_length,pos+SD_motif_length+pre_SD_length)
+    max_distance_2=max_distance/2
     MH_seq=refFA.fetch(chrom,pos-MH_length,pos)
-    seq_window=refFA.fetch(chrom,pos+SD_motif_length+pre_SD_length+1,pos+pre_SD_length+max_distance-1)
+    seq_window=refFA.fetch(chrom,pos+SD_motif_length+pre_SD_length+1,pos+pre_SD_length+max_distance_2-1)
     seq_window_fabio=refFA.fetch(chrom,pos-MH_length,pos+max_distance-1)
     #seq_window_fabio is only for the print
     #1° MH is always in position 0 in seq_window_fabio
@@ -328,7 +331,8 @@ def fa2insertion_snapback(refFA,chrom,pos,MH_length,SD_motif_length,max_distance
     else:
         Y_length_SD_motif_length=Y_length+SD_motif_length
         #here i_SD is distance between the last nt 1° SD and  2° SD 
-        seq_window=refFA.fetch(chrom,pos+SD_motif_length+pre_SD_length+Y_length_SD_motif_length,pos+max_distance)
+        #seq_window=refFA.fetch(chrom,pos+SD_motif_length+pre_SD_length+Y_length_SD_motif_length,pos+max_distance)
+        seq_window=refFA.fetch(chrom,pos+SD_motif_length+pre_SD_length+Y_length_SD_motif_length,pos+SD_motif_length+pre_SD_length+Y_length_SD_motif_length+X_length+MH_length)
         #once the SD (P) has been founded i search the rec of MH
         MH_revc=seq2revcomplement(MH_seq)
         Z_length=seq_window.find(MH_revc)
@@ -391,6 +395,7 @@ def fa2deletion_snapback(refFA,chrom,pos,MH_length,SD_motif_length,max_distance,
     X_seq=refFA.fetch(chrom,pos,pos+X_length)
 
     #seq_window=the seq where the we search the MHrevc motif, it starts from 1nt after the first SD to max distance
+    
     seq_window=refFA.fetch(chrom,pos+X_length+SD_motif_length+1,pos+max_distance-1)
     seq_window_fabio=refFA.fetch(chrom,pos-MH_length,pos+max_distance-1)
     #seq_window_fabio is only for the print
@@ -460,7 +465,7 @@ def fa2deletion_snapback(refFA,chrom,pos,MH_length,SD_motif_length,max_distance,
 
 
 
-def fa2SD_direct_insertion(refFA,chrom,pos,MH_length,SD_motif_length,max_distance,pre_SD_length=0):
+def fa2SD_direct_insertion(refFA,chrom,pos,MH_length,SD_motif_length,max_distance,X_length,pre_SD_length=0):
     """Function to create scars of a SD-direct insertion, no matter if trans or loop-out.
     It happens when Z=0, X>0.
     DSB repair on a fasta file giving outuput in vcf-like entries. First and last 2kbp of chromosomes should not be used.
@@ -477,7 +482,8 @@ def fa2SD_direct_insertion(refFA,chrom,pos,MH_length,SD_motif_length,max_distanc
     #creating MH and SD according to the drawings and searching it in the seq_window
     MH_seq=refFA.fetch(chrom,pos-MH_length,pos)
     SD_motif=refFA.fetch(chrom,pos+pre_SD_length,pos+pre_SD_length+SD_motif_length)
-    seq_window=refFA.fetch(chrom,pos+SD_motif_length+pre_SD_length,pos+max_distance-1)
+    max_distance_2=max_distance/2
+    seq_window=refFA.fetch(chrom,pos+SD_motif_length+pre_SD_length,pos+max_distance_2-1)
     seq_window_fabio=refFA.fetch(chrom,pos-MH_length,pos+max_distance - 1)
     Y_lenght=seq_window.find(MH_seq) #=position of MH from 1°SD to seq window
     print("seq window from 1° MH: "+seq_window_fabio)
@@ -491,7 +497,8 @@ def fa2SD_direct_insertion(refFA,chrom,pos,MH_length,SD_motif_length,max_distanc
     else:
         Y_lenght_MH_motif_length=Y_lenght+MH_length
         print("Y_length: "+str(Y_lenght))
-        seq_window=refFA.fetch(chrom,pos+SD_motif_length+Y_lenght_MH_motif_length,pos+max_distance)
+        #seq_window=refFA.fetch(chrom,pos+SD_motif_length+Y_lenght_MH_motif_length,pos+max_distance)
+        seq_window=refFA.fetch(chrom,pos+SD_motif_length+Y_lenght_MH_motif_length,pos+SD_motif_length+Y_lenght_MH_motif_length+X_length+SD_motif_length)
         #up here seq_window is from 2°MH to max distance, it's used to find 2°SD
         Z_length=seq_window.find(SD_motif)
         if Z_length < 1:
@@ -638,9 +645,10 @@ def fa2SD_direct_substitution(refFA,chrom,pos,MH_length,SD_motif_length,max_dist
     SD_motif=refFA.fetch(chrom,pos+X_length,pos+X_length+SD_motif_length) 
     #X_length= replaced seq
     X_seq=refFA.fetch(chrom,pos,pos+X_length)
+    max_distance_2=max_distance/2
     seq_window=refFA.fetch(chrom,pos+X_length+SD_motif_length,
             pos+X_length+SD_motif_length+max_distance-1) #from SD to maxdistance
-    seq_window_fabio=refFA.fetch(chrom,pos-MH_length,pos+max_distance - 1) 
+    seq_window_fabio=refFA.fetch(chrom,pos-MH_length,pos+max_distance_2 - 1) 
     #searcing MH in seq.window 
     Y_length=seq_window.find(MH_seq) #=position of 2°MH from 1°SD in seq window
     print("seq window from 1° MH: "+seq_window_fabio)
@@ -656,7 +664,7 @@ def fa2SD_direct_substitution(refFA,chrom,pos,MH_length,SD_motif_length,max_dist
         #here i_MH is the pos of the last nt of 2° SD from 2° MH
         seq_window=refFA.fetch(chrom,
                 pos+X_length+SD_motif_length+Y_length+MH_length,
-                pos+X_length+SD_motif_length+Y_length+MH_length+max_distance)
+                pos+X_length+SD_motif_length+Y_length+MH_length+max_distance_2)
         #up here seq_window is from 2°MH to max distance, it's used to find 2°SD 
         #once we found MH we can search for SD
         Z_length=seq_window.find(SD_motif) #position of 2° SD from the end of 2° MH
@@ -753,9 +761,10 @@ def fa2SD_snapback_substitution(refFA,chrom,pos,MH_length,SD_motif_length,max_di
     SD_motif=refFA.fetch(chrom,pos+X_length,pos+X_length+SD_motif_length) 
     X_seq=refFA.fetch(chrom,pos,pos+X_length)
     #from SD to SD + maxdistance
+    max_distance_2=max_distance/2
     seq_window=refFA.fetch(chrom,
             pos+X_length+SD_motif_length + 1 ,
-            pos+X_length+SD_motif_length + 1 +max_distance-1) #from SD to maxdistance
+            pos+X_length+SD_motif_length + 1 +max_distance_2-1) #from SD to maxdistance
     seq_window_fabio=refFA.fetch(chrom,pos-MH_length,pos+max_distance - 1) 
     #create the revc of SD and search it in the window after X-Seq
     SD_revc=seq2revcomplement(SD_motif)
@@ -774,7 +783,7 @@ def fa2SD_snapback_substitution(refFA,chrom,pos,MH_length,SD_motif_length,max_di
         Y_length_SD_motif_length=Y_length+SD_motif_length
         seq_window=refFA.fetch(chrom,
                 pos+X_length+SD_motif_length+Y_length_SD_motif_length,
-                pos+X_length+SD_motif_length+Y_length_SD_motif_length+max_distance)
+                pos+X_length+SD_motif_length+Y_length_SD_motif_length+max_distance_2)
         #up here seq_window is from 2°SD to max distance, it's used to find 2°MH or MHrevc
         #once we found SD, we can create the revc of MH and searching it in a wndow that start after SD_revc
         MH_revc=seq2revcomplement(MH_seq)
@@ -906,7 +915,7 @@ while len(myvcf)<nsims:
     elif xmechanism=="pol_slip_ins":
         res=pol_slip_ins(refFA,xchr,xpos,xMHlength,xmaxdistance)
     elif xmechanism=="SD_inverted_insertion":
-        res=fa2insertion_snapback(refFA,xchr,xpos,MH_length=xMHlength,SD_motif_length=xSDlength,max_distance=xmaxdistance)
+        res=fa2insertion_snapback(refFA,xchr,xpos,MH_length=xMHlength,SD_motif_length=xSDlength,max_distance=xmaxdistance,X_length=xX_length)
     elif xmechanism=="SD_inverted_deletion":
         res=fa2deletion_snapback (refFA,xchr,xpos,MH_length=xMHlength,SD_motif_length=xSDlength,max_distance=xmaxdistance,X_length=xX_length)
     elif xmechanism=="random_insertion":
@@ -914,7 +923,7 @@ while len(myvcf)<nsims:
     elif xmechanism=="random_substitution":
         res=random_substitution(refFA,xchr,xpos,xMHlength,xmaxdistance)
     elif xmechanism=="SD_direct_insertion":
-        res=fa2SD_direct_insertion (refFA,xchr,xpos,xMHlength,xSDlength,xmaxdistance)
+        res=fa2SD_direct_insertion (refFA,xchr,xpos,xMHlength,xSDlength,xmaxdistance,X_length=xX_length)
     elif xmechanism=="SD_direct_deletion":
         res=fa2SD_direct_deletion (refFA,xchr,xpos,xMHlength,xSDlength,max_distance=xmaxdistance,X_length=xX_length)
     elif xmechanism=="SD_direct_substitution":

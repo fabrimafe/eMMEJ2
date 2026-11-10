@@ -1,0 +1,504 @@
+
+# python3 RMdetector.py -v /home/labs/alevy/guyta/guy_master_project/data/indels_simulations/20220620_sims/mixed_files/20220629_07_MMEJ_03_NHEJ_mix_unlabled.vcf -o /home/labs/alevy/guyta/guy_master_project/scripts/general_scripts/RM_wraped_software -w 1500 -ra True -anc False -r /home/labs/alevy/guyta/guy_master_project/data/indels_simulations/from_fabrizio/indel_sumlations/simulations/GWHAAEV00000000.1.genome.fasta
+
+from ast import arg
+import sys
+sys.path.append('src')
+sys.path.append('/home/fabio/git/eMMEJ2/src')
+from io import StringIO
+import string
+import datetime
+from time import gmtime, strftime, localtime
+import argparse
+import logging
+import regex as re
+
+import pandas as pd
+import numpy as np
+from pysam import FastaFile
+import Bio
+from Bio import Align #from Bio import pairwise2. # pairwise2 is now deprecated in Biopython >1.80
+from Bio import pairwise2
+
+from MicroHomology_module_v6 import emMEJrealignment
+from realignment_module import * 
+from pysam_getfasta import *
+
+# setting pandas display options
+# pd.options.display.max_colwidth = 3500
+pd.set_option("display.max_columns", None)
+buf, buf2, buf3 = StringIO(),StringIO(), StringIO()
+date = ''.join(str(datetime.datetime.today()).split()[0].split('-'))
+local_h = strftime("%H%M", localtime())
+
+# Construct an argument parser
+all_args = argparse.ArgumentParser()
+# Add arguments to the parser
+all_args.add_argument("-v", "--vcf", required=True,
+   help="path to input vcf (string)")
+all_args.add_argument("-o", "--outputfile", required=False,
+      help="path to output file (string)", default="RMdetector_output.tsv")
+all_args.add_argument("-r", "--ref", required=True,
+   help="path to reference genome in fasta format (string)")
+all_args.add_argument("-w", "--windowsize", required=False,
+     default=150, type=int,
+      help="size (in bp) of the context window (int)")
+
+# optional arguments, turned on by using the flag
+all_args.add_argument("-mhl", "--MH_lengths", required=False ,default="2", 
+      help="a flag that specify the specific MH length that one wants to analyze, default is all MH lengths")
+all_args.add_argument("-cr", "--CRISPR", required=False, action='store_true',default=False, 
+      help="a flag to indicate if the algorithm performes on CRISPR data")
+
+all_args.add_argument("-ic", "--include_context", required=False,  default=False, 
+      action='store_true',
+      help="a flag to indicate whether to include context in output or not")
+
+all_args.add_argument("-vr", "--verbose", required=False, 
+        action='store_true',default=False, 
+      help="a flag to turn on verbose mode")
+
+all_args.add_argument("-ex", "--extension", required=False,
+        action='store_true',default=False,
+      help="a flag to turn on the extension of MH and SD")
+
+all_args.add_argument("-a", "--alignment", required=False,
+      action='store_true',default=False,
+      help="a flag to turn on the realignment module")
+
+all_args.add_argument("-m", "--maxdistance", type=int ,default=None,
+        help="a flag that specify the max number of shifts to each side in the DSB_generator_background")
+
+all_args.add_argument("-s", "--step", type=int, default=1,
+        help="step between shifts in the DSB_generator_background (default 1; e.g. -m 50 -s 5 gives shifts 0,5,10,...,50)")
+
+all_args.add_argument("-d", "--de_collapse_distance", type=int ,default=None,
+        help="a flag that specify the max number of nt added to the right ot to the left of ANC and DER")
+args = vars(all_args.parse_args())
+
+# ------------------ PREPARING DATA ------------------------------------
+#
+# In this section
+# 1) cleaning of the data based on the xo
+# 2) define ancestral state
+# 3) if genomic data realign
+#
+# 
+# Loading data
+
+MH_lengths=args['MH_lengths'].split(",")
+MH_lengths = [int(x) for x in MH_lengths]
+
+path_to_data = args["vcf"]
+Dtypes={'CHR':str, 'POS':int,'variant_id':str, 'REF':str, 'ALT':str, 'ANCESTRAL': int}
+col_names = ['CHR', 'POS','variant_id', 'REF', 'ALT', 'ANCESTRAL']
+
+#if not args['ancestral']: col_names.remove('ANCESTRAL')
+df = pd.read_csv(path_to_data, sep="\t", header=None, dtype=Dtypes, 
+                    names=col_names, comment='#') 
+
+# filtering out cases in which length of REF and ALT are equal
+
+#df = df.loc[(df['REF'].str.len() != df['ALT'].str.len()), :]
+if args['verbose']: print(f"Input data dimentions:{df.shape}")
+
+
+set_ancestral_state_indel_2(df=df)
+
+#if args['ancestral']: set_ancestral_state_indel(df=df)
+#else: df.rename(columns={'REF': 'ANC', 'ALT': 'DER'}, inplace=True)
+
+#  reading fasta file using pysam
+fastafile=args['ref']
+refFA=FastaFile(fastafile)
+
+# Filtering out indels with non-ACGT characters (e.g. N) in their context.
+df = df.loc[(df['POS'] > 1000), :]
+
+problematic_nuc = list(string.ascii_uppercase)
+problematic_nuc.remove('A')
+problematic_nuc.remove('C')
+problematic_nuc.remove('G')
+problematic_nuc.remove('T')
+
+
+df['context_contains_N'] = df.apply(lambda row: any(c in str(refFA.fetch(row['CHR'],
+            row['POS']-1000 ,row['POS']+1000)).upper() for c in problematic_nuc), axis=1)
+
+if args['verbose']:
+    print(
+        f"""Filtering {df.loc[df['context_contains_N'], :].shape[0]} indels that contain N in their reference context""")
+
+df = df.loc[(df['context_contains_N'] == False), :]
+df.drop(columns=['context_contains_N'], inplace=True)
+#print(df[['DER', 'ANC']])
+# df = df.loc[df['CHR'] == 'pol_slip_monodirectional_0',:]
+
+#if genomic data realign indels
+SUB = (
+        (df['ANC'].str.len() >= 1) & 
+        (df['DER'].str.len() >= 1) &
+        (df['ANC'].str[0] != df['DER'].str[0])).any()
+
+
+
+if args ['alignment'] and not args['CRISPR'] and not SUB:
+    df=df.apply(lambda row : vcf2realignedvcfs_pairwise2(refFA,row['CHR'],row['POS'], row['ANC'],row['DER'],150), axis = 1)
+    df=flatten_2list(df.tolist())
+    df=pd.DataFrame(df,columns = ['CHR','POS','ANC',"DER","original_pos"])
+    df.loc[:, 'POS'] = df.loc[:, 'POS'] + 1
+else:
+    df['original_pos'] = df['POS']
+
+
+    
+"""
+#now this new lines allow to work only with the variant on the original vfc (input)
+if not args['CRISPR']:
+    orig_ANC = df['ANC'].iloc[0]
+    orig_DER = df['DER'].iloc[0]
+
+    df = df.apply(lambda row : vcf2realignedvcfs_pairwise2(refFA,row['CHR'],row['POS'],row['ANC'],row['DER'],150),axis = 1)
+
+df = flatten_2list(df.tolist())
+
+df = pd.DataFrame(df,columns=['CHR', 'POS', 'ANC', 'DER', 'original_pos'])
+df = df[(df['ANC'] == orig_ANC) & (df['DER'] == orig_DER)]
+"""
+
+# -------------------------- PREPARING THE DATA TO MOTIF FINDING STEP -------------------------
+# making sure that there are no SNPs in the data
+#df = df.loc[(df.loc[:,'DER'].str.len() != df.loc[:,'ANC'].str.len()),:]
+
+
+
+# Removing duplicates --------------------------
+df.drop_duplicates(subset=['CHR','POS','ANC',"DER"],inplace=True)
+df.reset_index(drop=True,inplace=True)
+  
+# getting rid of the 'N' in ref and NaN in DER
+if args['verbose']:
+    print(
+        f"Filtering {df.loc[df['ANC'].str.contains(pat='N'), :].shape[0]} indels that contain N in their indel sequence")
+df = df.loc[(df['ANC'].str.contains(pat='N') == False), :]
+df = df.loc[(df['DER'].isna() == False), :]
+
+# create unique variant name for each original indel
+def create_variant_id(chrom, original_pos):
+    """Define name (id) for a set of potential realignments of the same original indel
+    """
+    return(chrom+"_"+str(original_pos).split(".")[0])
+
+if args['CRISPR']: df['original_pos'] = df['POS']
+if df['original_pos'].isna().any():
+    df['variant_id'] = df.apply(lambda x: create_variant_id(x['CHR'], (x['POS'])), axis=1)
+else:
+    df['variant_id'] = df.apply(lambda x: create_variant_id(x['CHR'], (x['original_pos'])), axis=1)
+
+df.loc[:, 'DER'] = df.loc[:, 'DER'].str.upper()
+df.loc[:, 'ANC'] = df.loc[:, 'ANC'].str.upper()
+
+
+
+de_collapse_distance= args['de_collapse_distance']
+if args ['de_collapse_distance'] is not None:
+    df = df.apply(lambda row: de_collapse(refFA, row['CHR'], row['POS'],
+                                                    row['ANC'], row['DER'],
+                                                    de_collapse_distance),
+                   axis=1)
+    df = flatten_2list(df.tolist())
+    df = pd.DataFrame(df, columns=['CHR', 'POS','variant_id', 'ANC', 'DER','original_pos','de_collapse_id', 'n_de_collapse'])
+
+print(df.to_string())
+# defining indel type and length
+df.loc[:, 'indel_type'] = np.nan
+df.loc[
+        (df['ANC'].str.len() > 1) & 
+        (df['DER'].str.len() == 1) &
+        (df['ANC'].str[0] == df['DER']),
+         'indel_type'] = 'DEL'
+
+
+
+df.loc[
+        (df['ANC'].str.len() == 1) &
+        (df['DER'].str.len() > 1) &
+        (df['ANC'] == df['DER'].str[0]),
+        'indel_type'] = 'INS'
+
+#se non è ins o del allora è sub 
+df.loc[df['indel_type'].isna(), 'indel_type'] = 'SUB'
+"""
+df.loc[
+        (df['ANC'].str.len() >= 1) &
+        (df['DER'].str.len() >= 1) &
+        (df['ANC'].str[0] != df['DER'].str[0]),
+        'indel_type'] = 'SUB'
+"""
+
+df.loc[:, 'indel_len'] = np.nan
+"""
+df.loc[:, 'ref_len'] = df.loc[:,'ANC'].str.len()
+df.loc[:, 'alt_len'] = df.loc[:,'DER'].str.len()
+df.loc[(df['indel_type'] == 'INS'), 'indel_len'] = df.loc[:, 'alt_len'] - df.loc[:, 'ref_len']
+df.loc[(df['indel_type'] == 'DEL'), 'indel_len'] = df.loc[:, 'ref_len'] - df.loc[:, 'alt_len']
+df.loc[df['indel_type'] == 'SUB', 'indel_len'] = abs(df['ref_len'] - df['alt_len'])
+"""
+
+df_alignments = df.copy()
+df_alignments['alignment_ID'] = df_alignments['original_pos'].astype(str).str.split('.').str[-1].astype(int)
+
+
+maxdistance = args['maxdistance']
+step = args['step']
+#======DSB_background_generators useful to create a background of DSB around the indel======
+if args ['maxdistance'] is not None:
+    df = df.apply(lambda row: DSB_background_generator(refFA, row['CHR'], row['POS'],row['original_pos'],
+                                                    row['ANC'], row['DER'],
+                                                    row['indel_type'], maxdistance, step),
+                   axis=1)
+    df = flatten_2list(df.tolist())
+    df = pd.DataFrame(df, columns=['CHR', 'POS','variant_id', 'ANC', 'DER','original_pos','indel_type','alignment_ID'])
+
+#print(df.to_string())
+
+#remove duplicates for the same pos, anc and der
+df = df.drop_duplicates(subset=['POS','ANC','DER'], keep='first')
+df = df.reset_index(drop=True)
+
+
+
+df = pd.concat([df_alignments, df], ignore_index=True)
+df = df.reset_index(drop=True)
+# ricalcolo ref_len, alt_len, indel_len per tutte le righe (originali + background)
+df['ref_len'] = df['ANC'].str.len()
+df['alt_len'] = df['DER'].str.len()
+df['indel_len'] = (df['ref_len'] - df['alt_len']).abs()
+#print(df.to_string())
+#remove duplicates for the same pos, anc and der
+df = df.drop_duplicates(subset=['POS','ANC','DER'], keep='first')
+df = df.reset_index(drop=True)
+#print(df.to_string())
+indel_position = args['windowsize']
+step = args['step']
+
+
+
+# --------------- Repair mechanism detection ---------------------------------------------
+
+indel_position = args['windowsize']
+
+#Define each row as a emMEJrealignment class, applyng class to every row (realignment) of dataset, which is define in MicroHomology_module_v3. In this class, methods for detection and manipulation.
+
+
+#First step, run 5'->3' (flip=False)---------->>>>>>>>>>
+microhomology_object = df.apply( lambda x: emMEJrealignment(
+                            DER=x['DER'], # change name to derived seq
+                            ANC=x['ANC'],
+                            pos_on_chr=x['POS'],
+                            indel_type=x['indel_type'],
+                            flip=False,
+                            include_context=args["include_context"],
+                            CRISPR=args["CRISPR"],
+                            extension=args["extension"],
+
+                            MH_lengths=MH_lengths,
+                            windowsize=args['windowsize'], 
+                            refFA=refFA, chrom=x['CHR']), axis = 1)
+print("detection done")
+#create a dataframe (df2) by appending all the exported data (ex_data) from microhomology_object
+df2 = None
+for i in microhomology_object.index:
+    if (i == 0):
+        df2 = microhomology_object[i].ex_data
+    else:
+        df2 = pd.concat([df2, microhomology_object[i].ex_data])
+
+
+print(df2.columns)       
+df2.reset_index(drop=True, inplace=True)
+df.reset_index(drop=True, inplace=True)
+df = df.join(df2, how = 'right')
+df['direction'] = 0
+
+print("appending done")
+#2nd step, run on flipped seq (3'->5'):--------->>>>>>>>
+"""
+#if crispr, look for ALL patterns ALSO on the flipped seq:-->
+if args['CRISPR']:
+    df_fl = df.loc[:, ['CHR', 'POS', 
+        'ANC', 'DER', 'original_pos',
+        'variant_id', 'indel_type', 'indel_len' ]].copy() 
+
+    microhomology_object = df_fl.apply( lambda x: emMEJrealignment(
+                            DER=x['DER'],
+                            ANC=x['ANC'],
+                            pos_on_chr=x['POS'],
+                            indel_type=x['indel_type'],
+                            flip=True,
+                            include_context=args["include_context"],
+                            extension=args["extension"],
+                            MH_lengths=MH_lengths,
+                            windowsize=args['windowsize'], 
+                            refFA=refFA, chrom=x['CHR']), axis = 1)
+
+    tmp_df = None
+    for i in microhomology_object.index:
+        if (i == 0):
+            tmp_df = microhomology_object[i].ex_data
+        else:
+            tmp_df = pd.concat([tmp_df, microhomology_object[i].ex_data])
+            
+    tmp_df.reset_index(drop=True, inplace=True)
+    df_fl.reset_index(drop=True, inplace=True)
+    df_fl = df_fl.join(tmp_df, how='right')
+    df_fl['direction'] = 1
+    df = pd.concat([df, df_fl], axis=0)
+    # in the case of crispr, make variable ID uniq per
+    # direction, this is necessary for proper EM functioning
+    df['variant_id'] = df.apply(
+        lambda row: f"{row['variant_id']}.{row['direction']}", axis=1)
+
+"""
+# if not crispr, look for patterns (only for insertions, no deletion) on the fliped seq (3'->5'):--> 
+"""
+print("start insertions")
+if not args['CRISPR']:
+    df_ins = df.loc[(df['indel_type'] == 'INS'), ['CHR', 'POS', 
+        'ANC', 'DER', 'original_pos',
+        'variant_id', 'indel_type', 'indel_len']].copy()
+    if df_ins.shape[0] > 0:
+        microhomology_object = df_ins.apply( lambda x: emMEJrealignment(
+                                DER=x['DER'],
+                                ANC=x['ANC'],
+                                pos_on_chr=x['POS'],
+                                indel_type=x['indel_type'],
+                                flip=True,
+                                include_context=args["include_context"],
+                                extension=args["extension"],
+                                MH_lengths=MH_lengths,
+                                windowsize=args['windowsize'], 
+                                refFA=refFA, chrom=x['CHR']), axis = 1)
+        
+        tmp_df = None
+        for i in microhomology_object.index:
+            if (i == 0):
+                tmp_df = microhomology_object[i].ex_data
+            else:
+                tmp_df = pd.concat([tmp_df, microhomology_object[i].ex_data])
+                
+        tmp_df.reset_index(drop=True, inplace=True)
+        df_ins.reset_index(drop=True, inplace=True)
+        df_ins = df_ins.join(tmp_df, how='right')
+        df_ins['direction'] = 1
+        df = pd.concat([df, df_ins], axis=0)
+
+df.sort_values(by=['CHR', 'POS'], axis=0, ascending=True, inplace=True)
+df.reset_index(drop=True, inplace=True)
+"""
+print("save results")
+#Use logging module to have a nice log output
+logging.debug(f'## MMEJ detection is done({args["vcf"]})')
+df.info(buf=buf)
+logging.info(buf.getvalue())
+# ----------- Make this more efficient -------------------------------------
+if 'de_collapse_id' not in df.columns:
+    df['de_collapse_id'] = '00'
+
+df['de_collapse_id'] = df['de_collapse_id'].fillna('00')
+
+orig_pos = df['variant_id'].str.split('_').str[-1].astype(int)
+
+
+
+df['observed'] = (
+    (df['POS'] == orig_pos) &
+    (df['de_collapse_id'] == '00')
+).astype(int)
+
+df['n_de_collapse'] = df['de_collapse_id'].apply(lambda s: sum(int(c) for c in s))
+
+# --- ordina: per ogni variante prima l'osservata, poi le generate ---
+df['_orig_pos'] = orig_pos
+df = df.sort_values(by=['CHR', '_orig_pos', 'observed', 'POS'],
+                    ascending=[True, True, False, True]).reset_index(drop=True)
+df = df.drop(columns=['_orig_pos'])
+
+col_to_save = ['CHR', 'POS','variant_id', #'REF','ALT',
+            'ANC','DER','alignment_ID','direction', 'indel_type', 'indel_len', 'observed','de_collapse_id','n_de_collapse', 
+            # deletions
+            'MMEJ',
+            'MMEJ_motif_len',
+            'MMEJ_motif',
+
+            #Direct_template
+            'Direct_Template',
+            'DT_indel_pos',
+             
+            #Inverted_template
+            'Inverted_Template',
+            'IT_indel_pos',
+
+            #SD-direct_deletion
+            'Direct_Deletion', 
+            'DD_rep_pat_len',
+            'DD_rep_pat',            
+            'DD_motif_pos',
+
+                        
+            # SD_inverted_deletions
+            'Inverted_Deletion',
+
+            'ID_rep_pat_len',
+            'ID_rep_pat',
+            
+            'ID_motif_pos',
+            
+            # SD_direct_insertion
+            'Direct_Insertion',
+            'DI_rep_pat_len',
+            'DI_rep_pat',
+            'DI_motif_pos',
+           
+            #SD_inverted_insertion
+            'Inverted_Insertion',            
+            'II_rep_pat_len',
+            'II_rep_pat',
+            'II_motif_pos',
+            
+            
+            #SD_direct_substitution
+            'Direct_Substitution',
+            
+            'DS_rep_pat_len',
+            'DS_rep_pat',
+            
+            'DS_motif_pos',
+                        
+            #SD_inverted_substitution
+            'Inverted_Substitution',
+            'IS_rep_pat_len',
+            'IS_rep_pat',
+            'IS_motif_pos',
+            
+                               
+            # polymerase slippage
+            'pol_slip', 'pol_slip_submotif', 'pol_slippage_repeatsIndel',
+            'pol_slippage_repeatsDownstream', 'pol_slip_pos'] # 'pol_slippage_times']
+
+if args["include_context"]: col_to_save = col_to_save + ['ref_genome_context', 'mutant_sequence']
+
+for c in col_to_save: #se una colonna non viene creato, come nel caso di plo_slip per le sub allora è falsa
+    if c not in df.columns:
+        df[c] = False
+
+df.loc[:,'MMEJ'].fillna(value=False, inplace=True)
+df.loc[:,'Inverted_Insertion'].fillna(value=False, inplace=True)
+df.loc[:,'Direct_Insertion'].fillna(value=False, inplace=True)
+df.loc[:,'pol_slip'].fillna(value=False, inplace=True)
+df.loc[:,'Direct_Deletion'].fillna(value=False, inplace=True)
+df.loc[:,'Inverted_Deletion'].fillna(value=False, inplace=True)
+df.loc[:,'Direct_Substitution'].fillna(value=False, inplace=True)
+df.loc[:,'Inverted_Substitution'].fillna(value=False, inplace=True)
+df.loc[:, col_to_save].to_csv(f"{args['outputfile']}", sep='\t', index=False)
+
