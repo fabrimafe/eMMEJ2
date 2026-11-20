@@ -1,5 +1,4 @@
-
-# python3 RMdetector.py -v /home/labs/alevy/guyta/guy_master_project/data/indels_simulations/20220620_sims/mixed_files/20220629_07_MMEJ_03_NHEJ_mix_unlabled.vcf -o /home/labs/alevy/guyta/guy_master_project/scripts/general_scripts/RM_wraped_software -w 1500 -ra True -anc False -r /home/labs/alevy/guyta/guy_master_project/data/indels_simulations/from_fabrizio/indel_sumlations/simulations/GWHAAEV00000000.1.genome.fasta
+#rm detector nato per filtrare i pol_slip = true 
 
 from ast import arg
 import sys

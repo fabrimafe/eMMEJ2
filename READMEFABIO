@@ -1,19 +1,18 @@
 env: gut_emMEJ_env
-script: DSB_simulator_weighted_siteg2.py
-	DSB_simulatorfabio_2.py: il classico simulatore
-	DSB_simulatorfabio_double_output.py: simulatore per simulazioni accoppaite
+script: DSB_simulatorfabio_2.py: il classico simulatore
 	genome_generator.py: generatore di genomic sintetici
 	sliding_vcf: usato per il collasso nelle simulazioni di sotituzioni 
 
 
 
-src: 	EM_10.R: ultima versione di EM
-	MicroHomology_module_V3: vecchio modulo per la detezione di DSB meccanisms 
-	MicroHomology_module_V5: nuovo modulo by fabio per la detezione di DSB meccanisms
-	realigment_module.py	
+src: 	EM_11.R: ultima versione di EM
+	EM_12.R: versione di EM usata per la prova dove calcolavamo il background globale e background locale
+	MicroHomology_module_V5: vecchio modulo per la detezione di DSB meccanisms 
+	MicroHomology_module_V6: nuovo modulo by fabio per la detezione di DSB meccanisms
+	realigment_module.py, script che contiene varie funzione usate da RMdetector3_2.py	
 	pysam_get_fasta
 	filter_sim_by_det.py utile a pulire le simulazioni che contengono pol_slip detectate tramite RMdetector 4
 
 bin/EMmej:
-	RMdetector3.py, DSB detector module
-	RMdetecor4.py; detector che filtra i pol_slip = true
+	RMdetector3_2.py, DSB detector module
+	RMdetector4.py; detector che filtra i pol_slip = true, questa funzione è attivata dalla flag -fps 

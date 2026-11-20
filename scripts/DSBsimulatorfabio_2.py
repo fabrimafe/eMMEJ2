@@ -24,7 +24,7 @@ all_args.add_argument("-m", "--mechanism", required=True,default="deletion_MMEJ"
    help="mechanism of DSB-repair. One of: deletion_NHEJ,deletion_MMEJ,SDloopout,SDsnapback,insertion,MMEJtrans")
 all_args.add_argument("-l", "--MHlength", required=False,type=int,default=2,
    help="length of microhomology motif ( or minimum indel size ) ")
-all_args.add_argument("-s", "--SDlength", required=False,type=int,default=5,
+all_args.add_argument("-s", "--SDlength", required=False,type=int,default=2,
       help="length of SD motif/distance second MH in MMEJtrans")
 all_args.add_argument("-d", "--maxdistance", required=False,type=int,default=10,
       help="maximum distance of MH motif or maximum indel length")
@@ -270,7 +270,8 @@ def fa2insertion(refFA,chrom,pos,min_length,max_length):
     min_length: minimum length of indel
     max_length: minimum length of indel
     """
-    indel_length=random.sample(range(min_length,max_length+1),1)[0]
+    max_length_2=max_length*2
+    indel_length=random.sample(range(min_length,max_length_2+1),1)[0]
     #indel_length=max_length+1
     # --- taking the source_pos of the ref in a the pos surrounding window 
     window_start =  pos - 200      # non andare sotto 0 (inizio cromosoma)

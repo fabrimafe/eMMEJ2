@@ -1,4 +1,23 @@
-#EM_8.R
+#EM_12.R
+#
+# EM_11 + genome-wide normalisation of the position term.
+#
+# EM_11 (and before):  p_position = g_obs / (g_obs + sum(g of the local controls)),  background = 1/n_positions
+#   -> the observed site is in the denominator, so the evidence for a mechanism can never exceed
+#      n_positions, and windows rich in opportunities are penalised: mechanisms are underestimated
+#      when they are rare.
+#
+# EM_12: the observed motif strength is divided by the EXPECTED strength at a random site
+#      rate = w * local_rate + (1 - w) * global_rate
+#      p_position = g_obs / (n_positions * rate)            background = 1/n_positions (unchanged)
+#   local_rate  = mean g over the local controls of the variant (alignment_ID == 0; observed NOT included)
+#   global_rate = mean g of the same event placed at random genomic sites (file from
+#                 bin/EMmej/global_background.py, option --global), recomputed with the current lambda/beta
+#   w           = --local_weight (default 0.2).  0 = fully genome-wide.
+#                 1 = fully local = exactly the EM_11 formula (also used when --global is not given).
+#   A pseudo-count of half an observed motif is added to the global sum, so the rate is never 0.
+#
+# New options:  --global <file>   --local_weight <0..1>   --write_results (per-alignment table to -o)
 
 library(data.table)
 library(optimx)
@@ -20,16 +39,16 @@ library(optimx)
 MECHANISMS <- list(
 
   ID = list(
-    mechanism_col = "SD_inverted_deletion",
-    motif_pos_col = "SD_ID_motif_pos",
-    motif_len_col = "SD_ID_repeat_pat_len",
+    mechanism_col = "Inverted_Deletion",
+    motif_pos_col = "ID_motif_pos",
+    motif_len_col = "ID_rep_pat_len",
     len_scale = 0.5
   ),
 
   DD = list(
-    mechanism_col = "SD_direct_deletion",
-    motif_pos_col = "SD_DD_motif_pos",
-    motif_len_col = "SD_DD_repeat_pat_len",
+    mechanism_col = "Direct_Deletion",
+    motif_pos_col = "DD_motif_pos",
+    motif_len_col = "DD_rep_pat_len",
     len_scale = 0.5
   ),
 
@@ -41,19 +60,37 @@ MECHANISMS <- list(
   ),
 
   DI = list(
-    mechanism_col = "SD_direct_insertion",
-    motif_pos_col = "SD_DI_motif_pos",
-    motif_len_col = "SD_DI_repeat_pat_len",
+    mechanism_col = "Direct_Insertion",
+    motif_pos_col = "DI_motif_pos",
+    motif_len_col = "DI_rep_pat_len",
     len_scale = 0.5
   ),
 
   II = list(
-    mechanism_col = "SD_inverted_insertion",
-    motif_pos_col = "SD_II_motif_pos",
-    motif_len_col = "SD_II_repeat_pat_len",
+    mechanism_col = "Inverted_Insertion",
+    motif_pos_col = "II_motif_pos",
+    motif_len_col = "II_rep_pat_len",
     len_scale = 0.5
-  )
+  ),
 
+  DS = list(
+    mechanism_col = "Direct_Substitution",
+    motif_pos_col = "DS_motif_pos",
+    motif_len_col = "DS_rep_pat_len",
+    len_scale = 0.5
+  ),
+
+  IS = list(
+    mechanism_col = "Inverted_Substitution",
+    motif_pos_col = "IS_motif_pos",
+    motif_len_col = "IS_rep_pat_len",
+    len_scale = 0.5
+  ),
+  POL_SLIP = list(
+    mechanism_col = "pol_slip", 
+    motif_pos_col = NULL,
+    motif_len_col = NULL,
+    len_scale = 1)
 )
 
 # 0b. CONFIGURAZIONE DEI BACKGROUND
@@ -196,6 +233,32 @@ parse_motif_positions <- function(x) {
 }
 
 
+# FORMATO DELLE COLONNE PER-MOTIVO (identico nel detector e nell'EM)
+#
+#   ";"  separa i MOTIVI diversi          es. DD_rep_pat_len = 4;6
+#   ","  separa le DISTANZE dello stesso motivo   es. DD_motif_pos = 22,27,42;8
+#
+# Convenzione B: tutte le colonne di un meccanismo (flag, len, pat, pos)
+# hanno ESATTAMENTE K elementi, allineati ai K flag. Dove il flag e' False
+# il valore e' il segnaposto "NA" (es. flag False;True -> len NA;6 -> pos NA;26).
+# Se il numero di elementi non torna, l'EM si ferma con un errore
+# (niente scarti silenziosi).
+
+split_motifs <- function(x) {
+  # ";" tra motivi. Vettore vuoto se la cella e' NA/vuota.
+  if (length(x) == 0 || is.na(x)) return(character(0))
+  x <- trimws(gsub("^\\s*\\[|\\]\\s*$", "", as.character(x)))
+  if (!nzchar(x)) return(character(0))
+  trimws(strsplit(x, ";", fixed = TRUE)[[1]])
+}
+
+split_distances <- function(g) {
+  # "," tra distanze dello stesso motivo. NA se il gruppo e' NA/segnaposto.
+  if (is.na(g) || toupper(g) == "NA" || !nzchar(g)) return(numeric(0))
+  d <- suppressWarnings(as.numeric(trimws(strsplit(g, ",", fixed = TRUE)[[1]])))
+  d[!is.na(d)]
+}
+
 prepare_motif_data <- function(data, mechanism) {
 
   mechanism_col <- mechanism$mechanism_col
@@ -204,43 +267,46 @@ prepare_motif_data <- function(data, mechanism) {
   len_scale <- if (is.null(mechanism$len_scale)) 1 else mechanism$len_scale
   has_position <- !is.null(motif_pos_col) && nzchar(motif_pos_col)
 
-  # toglie eventuali [ ] e spezza sulla virgola
-  split_commas <- function(x) {
-    if (is.na(x)) return(character(0))
-    x <- gsub("^\\s*\\[|\\]\\s*$", "", as.character(x))
-    trimws(strsplit(x, ",", fixed = TRUE)[[1]])
-  }
-
   mech_raw <- as.character(data[[mechanism_col]])
   is_M <- vapply(mech_raw, function(x)
-    isTRUE(any(toupper(split_commas(x)) == "TRUE")), logical(1))
+    isTRUE(any(toupper(split_motifs(x)) == "TRUE")), logical(1))
 
   idx <- integer(0); distance <- numeric(0); motif_l <- numeric(0)
 
+  fail <- function(i, msg)
+    stop(sprintf("Formato non valido (riga %d, meccanismo %s): %s", i, mechanism_col, msg), call. = FALSE)
+
   for (i in which(is_M)) {
 
-    flags <- toupper(split_commas(mech_raw[i])) == "TRUE"
-    lens  <- suppressWarnings(as.numeric(split_commas(data[[motif_len_col]][i]))) * len_scale
+    flags <- toupper(split_motifs(mech_raw[i])) == "TRUE"
     K <- length(flags)
 
+    # lunghezze: un valore per motivo (NA dove il flag e' False)
+    lens <- if (is.null(motif_len_col)) {
+      rep(2, K)                                   # = L0 -> peso 1
+    } else {
+      l <- split_motifs(data[[motif_len_col]][i])
+      if (length(l) != K) fail(i, sprintf("%d flag ma %d lunghezze (%s)", K, length(l), motif_len_col))
+      suppressWarnings(as.numeric(l)) * len_scale
+    }
+
+    # posizioni: un gruppo per motivo, distanze separate da ","
     if (has_position) {
-      groups <- trimws(strsplit(as.character(data[[motif_pos_col]][i]), ";", fixed = TRUE)[[1]])
-      length(groups) <- K                      # completa con NA se mancano gruppi
+      groups <- split_motifs(data[[motif_pos_col]][i])
+      if (length(groups) != K) fail(i, sprintf("%d flag ma %d gruppi di posizioni (%s)", K, length(groups), motif_pos_col))
     }
 
     for (k in seq_len(K)) {
       if (!flags[k]) next
-      ml <- if (k <= length(lens)) lens[k] else NA_real_
-      if (is.na(ml)) next
+      ml <- lens[k]
+      if (is.na(ml)) fail(i, sprintf("motivo %d e' TRUE ma la lunghezza e' NA", k))
 
       if (has_position) {
-        if (is.na(groups[k])) next
-        d <- suppressWarnings(as.numeric(split_commas(groups[k])))
-        d <- d[!is.na(d)]
+        d <- split_distances(groups[k])
+        if (length(d) == 0) fail(i, sprintf("motivo %d e' TRUE ma non ha posizioni", k))
       } else {
         d <- 0
       }
-      if (length(d) == 0) next
 
       idx      <- c(idx, rep(i, length(d)))
       distance <- c(distance, d)
@@ -265,6 +331,75 @@ calculate_g_all_fast <- function(motif_info, n_data, lambda, beta, L0 = 2) {
   idx <- as.integer(rownames(s))
   g[idx] <- s[, 1]
   g
+}
+
+# 3b. NORMALIZZAZIONE GENOME-WIDE (EM_12)
+
+# event_key(): same rule as row_key() in bin/EMmej/global_background.py
+event_key <- function(indel_type, anc, der) {
+  anc <- toupper(anc); der <- toupper(der)
+  ifelse(indel_type == "DEL", paste0("DEL:", nchar(anc) - 1),
+  ifelse(indel_type == "INS", paste0("INS:", substring(der, 2)),
+                              paste0("SUB:", nchar(anc), ":", der)))
+}
+
+# prepare_global(): motif info of the genome-wide control rows + link stats rows -> keys
+prepare_global <- function(global_data, stats, mechanisms) {
+  if (!"global_key" %in% colnames(global_data))
+    stop("Il file --global non ha la colonna global_key (va creato con global_background.py).")
+  keys <- unique(global_data$global_key)
+  stats_key <- match(stats$event_key, keys)
+  if (anyNA(stats_key)) {
+    miss <- unique(stats$event_key[is.na(stats_key)])
+    stop(sprintf("%d event keys of the input are missing in the --global file (e.g. %s). Re-run global_background.py on this input.",
+                 length(miss), paste(head(miss, 5), collapse = ", ")), call. = FALSE)
+  }
+  key_idx <- match(global_data$global_key, keys)
+  motif_info <- list()
+  for (m in names(mechanisms)) motif_info[[m]] <- prepare_motif_data(global_data, mechanisms[[m]])
+  list(keys = keys, key_idx = key_idx, n_key = tabulate(key_idx, nbins = length(keys)),
+       n_rows = nrow(global_data), stats_key = stats_key, motif_info = motif_info)
+}
+
+# position_term(): position probability of every alignment row, for one mechanism.
+#   glob = NULL or local_weight >= 1  -> EM_11 formula (observed in the denominator)
+#   otherwise                          -> g_obs / (n_positions * (w*local_rate + (1-w)*global_rate))
+position_term <- function(g_all, stats, cf_index_list, glob_m, glob, local_weight, lambda, beta, L0) {
+
+  g_obs <- g_all[stats$data_idx]
+  vg <- stats$variant_group
+  cf_sum_by_variant <- vapply(cf_index_list, function(idx)
+    if (length(idx) == 0) 0 else sum(g_all[idx]), numeric(1))
+  g_cf_sum <- cf_sum_by_variant[vg]
+  p_position <- numeric(nrow(stats))
+
+  if (is.null(glob) || local_weight >= 1) {            # ---- legacy (EM_11) ----
+    total <- g_obs + g_cf_sum
+    ok <- is.finite(g_obs) & is.finite(total) & total > 0
+    p_position[ok] <- g_obs[ok] / total[ok]
+    return(p_position)
+  }
+
+  # ---- global rate per key, with the current lambda/beta ----
+  g_glob <- calculate_g_all_fast(glob_m, glob$n_rows, lambda, beta, L0)
+  S_key <- numeric(length(glob$keys))
+  rs <- rowsum(g_glob, glob$key_idx, reorder = FALSE)
+  S_key[as.integer(rownames(rs))] <- rs[, 1]
+
+  # pseudo-count: half an observed motif (strongest alignment of the variant)
+  g_max <- data.table(g = g_obs, v = vg)[, .(m = max(g)), keyby = v]$m[vg]
+  glob_row <- (S_key[glob$stats_key] + 0.5 * g_max) / (glob$n_key[glob$stats_key] + 1)
+  n_align <- tabulate(vg)[vg]
+  global_rate <- rowsum(glob_row, vg, reorder = TRUE)[vg, 1] / n_align   # mean over the alignments
+
+  n_cf <- stats$n_cf
+  w <- ifelse(n_cf > 0, local_weight, 0)               # no local controls -> global only
+  local_rate <- ifelse(n_cf > 0, g_cf_sum / pmax(n_cf, 1), 0)
+  rate <- w * local_rate + (1 - w) * global_rate
+
+  ok <- is.finite(g_obs) & is.finite(rate) & rate > 0
+  p_position[ok] <- g_obs[ok] / (stats$n_positions[ok] * rate[ok])
+  p_position
 }
 
 # 4. LIKELIHOOD
@@ -339,6 +474,9 @@ precompute_variant_stats_multi <- function(data, mechanisms, lambda_init, beta_i
         indel_length = L,
         var_type = get_variant_type(row$ANC, row$DER),   # DEL / INS / SUB
         n_positions = n_positions,
+        n_cf = nrow(cf),
+        event_key = event_key(if ("indel_type" %in% names(row)) row$indel_type else get_variant_type(row$ANC, row$DER),
+                              row$ANC, row$DER),
         data_idx = row$.data_idx
       )
 
@@ -379,7 +517,8 @@ precompute_variant_stats_multi <- function(data, mechanisms, lambda_init, beta_i
 # Ottimizzazione vincolata (lambda>0, beta>=0) con L-BFGS-B.
 
 optimize_lambda_beta_mechanism <- function(data, stats, P_old, motif_info, cf_index_list,
-                                           lambda_init, beta_init, L0 = 2) {
+                                           lambda_init, beta_init, L0 = 2,
+                                           glob_m = NULL, glob = NULL, local_weight = 1) {
 
   n_data <- nrow(data)
   obs_data_idx <- stats$data_idx
@@ -391,16 +530,7 @@ optimize_lambda_beta_mechanism <- function(data, stats, P_old, motif_info, cf_in
     if (!is.finite(lambda) || !is.finite(beta) || lambda <= 0 || beta < 0) return(1e100)
 
     g_all <- calculate_g_all_fast(motif_info, n_data, lambda, beta, L0)
-    g_obs <- g_all[obs_data_idx]
-
-    cf_sum_by_variant <- vapply(cf_index_list, function(idx)
-      if (length(idx) == 0) 0 else sum(g_all[idx]), numeric(1))
-    g_cf_sum <- cf_sum_by_variant[variant_group]
-
-    total <- g_obs + g_cf_sum
-    p_position <- numeric(nrow(stats))
-    valid_total <- is.finite(g_obs) & is.finite(total) & total > 0
-    p_position[valid_total] <- g_obs[valid_total] / total[valid_total]
+    p_position <- position_term(g_all, stats, cf_index_list, glob_m, glob, local_weight, lambda, beta, L0)
 
     valid <- P_old > 0 & is.finite(P_old) & p_position > 0 & is.finite(p_position)
     if (!any(valid)) return(1e100)
@@ -436,7 +566,7 @@ optimize_lambda_beta_mechanism <- function(data, stats, P_old, motif_info, cf_in
 em_multi_mechanism <- function(data, stats, motif_info, cf_index_list, mechanisms, backgrounds,
                                pi_init, pi_bg_init, lambda_init, beta_init, lambda_I_init,
                                lambda_I_bg_init, max_iter = 100, tol = 1e-5,
-                               L0 = 2, verbose = TRUE) {
+                               L0 = 2, verbose = TRUE, glob = NULL, local_weight = 1) {
 
   mechanism_names <- names(mechanisms)
   bg_names <- names(backgrounds)
@@ -491,15 +621,8 @@ em_multi_mechanism <- function(data, stats, motif_info, cf_index_list, mechanism
     L_mechanisms <- list()
     for (m in mechanism_names) {
       g_obs <- g_all[[m]][stats$data_idx]
-
-      cf_sum_by_variant <- vapply(cf_index_list, function(idx)
-        if (length(idx) == 0) 0 else sum(g_all[[m]][idx]), numeric(1))
-      g_cf_sum <- cf_sum_by_variant[stats$variant_group]
-
-      total_position <- g_obs + g_cf_sum
-      p_position <- numeric(nrow(stats))
-      ok <- is.finite(g_obs) & is.finite(total_position) & total_position > 0
-      p_position[ok] <- g_obs[ok] / total_position[ok]
+      p_position <- position_term(g_all[[m]], stats, cf_index_list, glob$motif_info[[m]], glob,
+                                  local_weight, lambda[[m]], beta[[m]], L0)
 
       stats[[paste0("p_position_", m)]] <- p_position
       stats[[paste0("g_", m)]] <- g_obs
@@ -543,7 +666,8 @@ em_multi_mechanism <- function(data, stats, motif_info, cf_index_list, mechanism
     for (m in mechanism_names) {
       opt <- optimize_lambda_beta_mechanism(
         data = data, stats = stats, P_old = P[[m]], motif_info = motif_info[[m]],
-        cf_index_list = cf_index_list, lambda_init = lambda[[m]], beta_init = beta[[m]], L0 = L0)
+        cf_index_list = cf_index_list, lambda_init = lambda[[m]], beta_init = beta[[m]], L0 = L0,
+        glob_m = glob$motif_info[[m]], glob = glob, local_weight = local_weight)
       lambda_new[[m]] <- opt$lambda
       beta_new[[m]] <- opt$beta
     }
@@ -612,11 +736,93 @@ em_multi_mechanism <- function(data, stats, motif_info, cf_index_list, mechanism
   }
 
   list(results = stats, pi = pi, pi_bg = pi_bg, lambda = lambda, beta = beta,
-       lambda_I = lambda_I, lambda_I_bg = lambda_I_bg, history = history,
+       lambda_I = lambda_I, lambda_I_bg = lambda_I_bg, history = history, motif_info = motif_info,
        n_iter = iter, converged = delta < tol)
 }
 
-# 8. FUNZIONE PRINCIPALE
+# compute_mh_breakdown()
+# 9
+# Scompone la responsibility di ogni meccanismo per classe di lunghezza MH.
+#
+# Per ogni allineamento e per ogni classe k:
+#   share_within_alignment = (somma pesi dei motivi di classe k) / (somma pesi di tutti i motivi)
+#   P_<mecc>_MH<k>         = P_<mecc> * share_within_alignment
+# Le classi di un meccanismo sommano a P_<mecc>.
+#
+# La classe MH è motif_length così com'è: è già scalata da len_scale
+# (es. colonna 6 * 0.5 = MH3), quindi è la lunghezza della micromologia.
+# Valori dispari danno classi come MH2.5 (nessun arrotondamento).
+#
+# mh_max_class: se non NULL, tutte le MH >= mh_max_class finiscono in un'unica classe.
+#
+# Restituisce:
+#   $results     -> tabella per allineamento, con le colonne MHshare_* e P_*_MH*
+#   $priors_wide -> data.frame di UNA riga con le colonne pi_<mecc>_MH<k>
+
+compute_mh_breakdown <- function(em_out, n_data, L0 = 2, mh_max_class = NULL) {
+
+  results_table <- em_out$results
+  variant_id_per_row <- results_table$variant_id
+  is_first_row_of_variant <- !duplicated(variant_id_per_row)   # una riga per variante (per le medie)
+
+  prior_per_class <- list()   # accumula i pi_<mecc>_MH<k>
+
+  for (mech_name in names(em_out$motif_info)) {
+
+    motif_info_mech <- em_out$motif_info[[mech_name]]
+    if (length(motif_info_mech$motif_row_idx) == 0) next   # meccanismo senza motivi: salta
+
+    # Peso di ogni singolo motivo, con i parametri finali stimati dall'EM
+    weight_per_motif <- exp(
+      em_out$beta[[mech_name]] * (motif_info_mech$motif_length - L0) -
+      abs(motif_info_mech$motif_distance) / em_out$lambda[[mech_name]]
+    )
+
+    # Classe MH di ogni motivo (round solo per evitare errori di virgola mobile)
+    mh_length_per_motif <- round(motif_info_mech$motif_length, 2)
+    if (!is.null(mh_max_class)) mh_length_per_motif <- pmin(mh_length_per_motif, mh_max_class)
+    mh_classes <- sort(unique(mh_length_per_motif))
+
+    # g osservato spezzato per classe: un vettore (lungo quanto stats) per ogni classe
+    g_obs_per_class <- list()
+    for (mh_class in mh_classes) {
+      motifs_in_class <- mh_length_per_motif == mh_class
+
+      g_class_all_rows <- numeric(n_data)   # g della classe su tutte le righe del dataset
+      sum_by_row <- rowsum(weight_per_motif[motifs_in_class],
+                           motif_info_mech$motif_row_idx[motifs_in_class], reorder = FALSE)
+      g_class_all_rows[as.integer(rownames(sum_by_row))] <- sum_by_row[, 1]
+
+      # Riporta alle sole righe di stats (gli allineamenti osservati)
+      g_obs_per_class[[as.character(mh_class)]] <- g_class_all_rows[results_table$data_idx]
+    }
+    g_obs_total <- Reduce(`+`, g_obs_per_class)   # = g_obs del meccanismo
+
+    for (mh_class in mh_classes) {
+      class_label <- paste0("MH", mh_class)   # es. MH2, MH3, MH2.5
+
+      # Quota della classe dentro l'allineamento (0 se l'allineamento non ha motivi)
+      share_within_alignment <- ifelse(g_obs_total > 0,
+                                       g_obs_per_class[[as.character(mh_class)]] / g_obs_total, 0)
+
+      # Responsibility congiunta: meccanismo E classe MH
+      P_mech_and_mh <- results_table[[paste0("P_", mech_name)]] * share_within_alignment
+
+      results_table[[paste0("MHshare_", mech_name, "_", class_label)]] <- share_within_alignment
+      results_table[[paste0("P_", mech_name, "_", class_label)]] <- P_mech_and_mh
+
+      # Prior della classe: somma sugli allineamenti della variante, poi media sulle varianti
+      P_mech_and_mh_per_variant <- ave(P_mech_and_mh, variant_id_per_row, FUN = sum)
+      prior_per_class[[paste0("pi_", mech_name, "_", class_label)]] <-
+        mean(P_mech_and_mh_per_variant[is_first_row_of_variant], na.rm = TRUE)
+    }
+  }
+
+  list(results = results_table,
+       priors_wide = as.data.frame(prior_per_class, check.names = FALSE))
+}
+
+# 9. FUNZIONE PRINCIPALE
 #
 # `mechanisms`: sottoinsieme di MECHANISMS
 # `backgrounds`: sottoinsieme di BACKGROUNDS (default: NHEJ generico "legacy")
@@ -624,8 +830,10 @@ em_multi_mechanism <- function(data, stats, motif_info, cf_index_list, mechanism
 run_em_multi <- function(data, mechanisms, backgrounds = BACKGROUNDS_STANDARD,
                          lambda_init = NULL, beta_init = NULL, pi_init = NULL, pi_bg_init = NULL,
                          lambda_I_init = NULL, lambda_I_bg_init = NULL,
-                         max_iter = 100, tol = 1e-8, L0 = 2, verbose = TRUE) {
+                         max_iter = 100, tol = 1e-8, L0 = 2, verbose = TRUE,
+                         global_data = NULL, local_weight = 0.2) {
 
+  if (!is.finite(local_weight) || local_weight < 0 || local_weight > 1) stop("local_weight deve essere tra 0 e 1.")
   mechanism_names <- names(mechanisms)
   bg_names <- names(backgrounds)
   n_mech <- length(mechanism_names); n_bg <- length(bg_names)
@@ -651,6 +859,15 @@ run_em_multi <- function(data, mechanisms, backgrounds = BACKGROUNDS_STANDARD,
   stats <- pre$stats
   cat("Pre-calcolo completato:", nrow(stats), "righe di alignment.\n\n")
 
+  glob <- NULL
+  if (!is.null(global_data) && local_weight < 1) {
+    glob <- prepare_global(global_data, stats, mechanisms)
+    cat(sprintf("Normalizzazione: %.0f%% locale + %.0f%% genome-wide (%d chiavi, %d righe globali)\n",
+                100 * local_weight, 100 * (1 - local_weight), length(glob$keys), glob$n_rows))
+  } else {
+    cat("Normalizzazione: solo locale (formula EM_11)\n")
+  }
+
   cat("Esecuzione EM su:", mechanism_names, "+", bg_names, "\n\n")
 
   em_multi_mechanism(
@@ -658,7 +875,8 @@ run_em_multi <- function(data, mechanisms, backgrounds = BACKGROUNDS_STANDARD,
     mechanisms = mechanisms, backgrounds = backgrounds,
     pi_init = pi_init, pi_bg_init = pi_bg_init, lambda_init = lambda_init, beta_init = beta_init,
     lambda_I_init = lambda_I_init, lambda_I_bg_init = lambda_I_bg_init,
-    max_iter = max_iter, tol = tol, L0 = L0, verbose = verbose)
+    max_iter = max_iter, tol = tol, L0 = L0, verbose = verbose,
+    glob = glob, local_weight = local_weight)
 }
 
 # 9. CLI
@@ -691,6 +909,11 @@ if (sys.nframe() == 0) {
   pi_arg <- get_arg("-p")
   tol <- get_arg("-t", 1e-8, TRUE)
   max_iter <- get_arg("-m", 100, TRUE)
+  global_file <- get_arg("--global")                       # righe genome-wide (global_background.py)
+  local_weight <- get_arg("--local_weight", 0.2, TRUE)     # 0 = solo genome-wide, 1 = solo locale (EM_11)
+  write_results <- "--write_results" %in% args             # scrive la tabella per-allineamento in -o
+  mh_breakdown_requested <- "--mh_breakdown" %in% args     # attiva la scomposizione per classe MH
+mh_max_class <- get_arg("--mh_max", NULL, TRUE)          # opzionale: raggruppa le MH >= questo valore
 
   if (is.null(input_file) || is.null(output_file))
     stop("Uso:\nRscript EM_7.R -i input.tsv -o output.tsv --mechanisms ID,DD [--background NHEJ,RI,RS] [-p pi1,pi2] [-t tol] [-m max_iter]")
@@ -729,6 +952,14 @@ if (sys.nframe() == 0) {
   data <- fread(input_file, sep = "\t", header = TRUE)
   cat("Importazione completata:", nrow(data), "righe x", ncol(data), "colonne\n\n")
 
+  global_data <- NULL
+  if (!is.null(global_file)) {
+    global_data <- fread(global_file, sep = "\t", header = TRUE)
+    cat("Controlli genome-wide:", nrow(global_data), "righe da", global_file, "\n\n")
+  } else if (local_weight < 1) {
+    cat("ATTENZIONE: --global non specificato -> normalizzazione solo locale (formula EM_11)\n\n")
+  }
+
   # ---- Parametri iniziali ----
   n_mechanisms <- length(selected_names)
 
@@ -751,8 +982,21 @@ if (sys.nframe() == 0) {
   em_out <- run_em_multi(
     data = data, mechanisms = mechanisms, backgrounds = backgrounds,
     lambda_init = lambda_init, beta_init = beta_init, pi_init = pi_init,
-    lambda_I_init = lambda_I_init, max_iter = max_iter, tol = tol, L0 = 2, verbose = TRUE
+    lambda_I_init = lambda_I_init, max_iter = max_iter, tol = tol, L0 = 2, verbose = TRUE,
+    global_data = global_data, local_weight = local_weight
   )
+
+ # ---- Scomposizione per classe MH (opzionale) ----
+ mh_priors_wide <- NULL   # resta NULL se la flag non è attiva
+ if (mh_breakdown_requested) {
+   mh_out <- compute_mh_breakdown(em_out, n_data = nrow(data), L0 = 2, mh_max_class = mh_max_class)
+   em_out$results <- mh_out$results        # aggiunge MHshare_* e P_*_MH* all'output principale
+   mh_priors_wide <- mh_out$priors_wide    # verrà aggiunto al file dei parametri
+
+   cat("\n==============================\nPRIOR PER CLASSE MH\n==============================\n")
+   for (col_name in names(mh_priors_wide))
+     cat(col_name, "=", mh_priors_wide[[col_name]], "\n")
+ }
 
   # ---- Stampa risultati finali ----
   cat("\n==============================\nPRIOR FINALI\n==============================\n")
@@ -776,12 +1020,17 @@ if (sys.nframe() == 0) {
 
   # ---- Scrittura risultati ----
   cat("Scrittura dei risultati...\n")
-  fwrite(em_out$results, file = output_file, sep = "\t", quote = FALSE, na = "NA")
-  cat("Output salvato in:", output_file, "\n")
+  if (write_results) {
+    fwrite(em_out$results, file = output_file, sep = "\t", quote = FALSE, na = "NA")
+    cat("Output salvato in:", output_file, "\n")
+  }
 
   # ---- Riepilogo ultima iterazione ----
   last_iter_file <- paste0(output_file, "_paramaters_estimated")
   last_iter <- tail(em_out$history, 1)
+  last_iter$local_weight <- if (is.null(global_data)) 1 else local_weight
+  # Aggiunge i prior per classe MH alla riga dei parametri finali
+  if (!is.null(mh_priors_wide)) last_iter <- cbind(last_iter, mh_priors_wide)
 
   cat("Scrittura della history...\n")
   fwrite(last_iter, file = last_iter_file, sep = "\t", quote = FALSE, na = "NA")

@@ -1,0 +1,34 @@
+passo 1: simulazione 
+il primo step è simulare i vcf in modo che fra meccanismo causuale e meccanismo X non ci siano differenze riguardo la lunghezza dell'indel,
+come è definita indel length nei vari meccanismi:
+NHEJ= indel length = valore in flag -d
+RI=indel length = numero random fra 1  e valore in flag -d
+RS = indel length = numero random fra valore in flag -d e valore in flag -d moltiplicato per 2
+
+DD, ID, indel length= esattamente il valore della flag -zx
+
+II DI, indel lenght è random fra 1 e il valore della flag -d fratto 2
+
+DS, IS, indel lenght = numero random fra valore in flag -d e valore in flag -d moltiplicato per 2
+
+MMEJ, indel lenght = valore random fra MH length (2,3,4) e valore nella flag -d moltiplicato per 4
+
+POL_SLIP, indel lenght = mh length
+
+passo 2:identificazione delle regioni pol_slip con RM detector4.py
+
+python RMdetector4.py -v vcf_simulazioni  --ref reference_genome -o detection_di_tutte_le_sims_senza_polslip -mhl ${MH} -a -w 100 -fps
+
+passo 3: rimozione dei vcf simulati con filter_sim_by_det.py
+
+python /home/fabio/git/eMMEJ2/src/filter_sim_by_det.py --sim vcf_simulazioni --det detection_di_tutte_le_sims_senza_polslip  --out vcf_simulazioni_senza_pol_slip
+
+passo 4:mixing
+
+mix di vcf_simulazioni_senza_pol_slip fatte con shuf: for PROPORTION in 0 0.02 0.25 0.5 0.75 0.98 1; == mixed_vcf_simulazioni_senza_pol_slip
+
+passo 5 detection: 
+python git/eMMEJ2/bin/EMmej/RMdetector3_2.py -v mixed_vcf_simulazioni_senza_pol_slip --ref genome_reference  -o output_detector  -mhl ${MH} -a -w 150 -m 50 
+
+passo 6 EM
+Rscript EM_11.R  -i output_detector -o output_EM --mechanisms mechanism_x --background random_mechanism 
