@@ -1,0 +1,743 @@
+EM_filtered_big_indel
+
+
+
+for XMECHANISM in DD ID DI II DS IS;do
+    case $XMECHANISM in
+        ID) EXTENDED_MECHANISM_NAME=SD_inverted_deletion ;;
+        DD) EXTENDED_MECHANISM_NAME=SD_direct_deletion ;;
+        DI) EXTENDED_MECHANISM_NAME=SD_direct_insertion ;;
+        II) EXTENDED_MECHANISM_NAME=SD_inverted_insertion ;;
+        DS) EXTENDED_MECHANISM_NAME=SD_direct_substitution ;;
+        IS) EXTENDED_MECHANISM_NAME=SD_inverted_substitution ;;
+    esac
+
+    for MH in 2 3 4;do
+        for INDELLENGTH in 25;do
+            for NSIMULATIONS in 2000;do
+                HADES=/mnt/HADES/fabio/thanatos_backup
+                OUTDIR=${HADES}/simulations_100w_big_indel/sims_loop_100w_${XMECHANISM}/mech_${XMECHANISM}_L_${INDELLENGTH}_MH_${MH}/
+                mkdir -p "$OUTDIR"
+                for ISIM in {1..10};do #solo il numero/nome di questa simulazione
+                python git/eMMEJ2/scripts/DSBsimulatorfabio_2.py -r /mnt/HADES/fabio/tests/hgfasta/hg38_clean.fa \
+                -m $EXTENDED_MECHANISM_NAME -o ${OUTDIR}/MH_${MH}_${XMECHANISM}_S_set${ISIM} -n $NSIMULATIONS -l $MH -s $MH -zx "$INDELLENGTH" -d 100
+                done
+            done
+        done
+    done
+done
+
+
+#DETECTION CHE IDENTIFICA LE VARIANT_ID SU REGIONI RIPETUTE
+MAXJOBS=15
+HADES=/mnt/HADES/fabio/thanatos_backup
+
+for XMECHANISM in DD ID DI II DS IS; do
+    for MH in 2 3 4; do
+        for INDELLENGTH in 25; do
+            for NSIMULATIONS in 2000; do
+
+                # stessa cartella usata dalla simulazione (input)
+                INPUT_DIR=${HADES}/simulations_100w_big_indel/sims_loop_100w_${XMECHANISM}/mech_${XMECHANISM}_L_${INDELLENGTH}_MH_${MH}/
+                # cartella parallela per la detection (output)
+                OUTPUT_DIR=${HADES}/simulations_100w_big_indel/det_no_pol_slip/sims_loop_100w_${XMECHANISM}/mech_${XMECHANISM}_L_${INDELLENGTH}_MH_${MH}_det/
+                mkdir -p "$OUTPUT_DIR"
+
+                for ISIM in {1..10}; do
+
+                    NAME=MH_${MH}_${XMECHANISM}_S_set${ISIM}
+
+                    # aspetta finché ci sono troppi job attivi
+                    while [ "$(jobs -rp | wc -l)" -ge "$MAXJOBS" ]; do
+                        sleep 10
+                    done
+
+                    nice -n 19 python git/eMMEJ2/bin/EMmej/RMdetector4.py \
+                        -v "${INPUT_DIR}/${NAME}" \
+                        --ref /mnt/HADES/fabio/tests/hgfasta/hg38_clean.fa \
+                        -o "${OUTPUT_DIR}/${NAME}_det" \
+                        -mhl ${MH} -a -w 100 -fps &
+
+                done
+            done
+        done
+    done
+done
+
+wait
+
+
+#RIMOZIONE POL SLIP CON IL FILTRO
+HADES=/mnt/HADES/fabio/thanatos_backup
+
+for XMECHANISM in DD ID DI II DS IS; do
+    for MH in 2 3 4; do
+        for INDELLENGTH in 25; do
+
+            SIM_DIR=${HADES}/simulations_100w_big_indel/sims_loop_100w_${XMECHANISM}/mech_${XMECHANISM}_L_${INDELLENGTH}_MH_${MH}
+            DET_DIR=${HADES}/simulations_100w_big_indel/det_no_pol_slip/sims_loop_100w_${XMECHANISM}/mech_${XMECHANISM}_L_${INDELLENGTH}_MH_${MH}_det/
+            FILT_DIR=${HADES}/simulations_100w_big_indel/sims_filtered_${XMECHANISM}/mech_${XMECHANISM}_L_${INDELLENGTH}_MH_${MH}
+            mkdir -p "$FILT_DIR"
+
+            for ISIM in {1..10}; do
+                NAME=MH_${MH}_${XMECHANISM}_S_set${ISIM}
+
+                python /home/fabio/git/eMMEJ2/src/filter_sim_by_det.py \
+                    --sim "${SIM_DIR}/${NAME}" \
+                    --det "${DET_DIR}/${NAME}_det" \
+                    --out "${FILT_DIR}/${NAME}"
+            done
+        done
+    done
+done
+
+
+#MMEJ
+DISTANCE_SEARCH_MH=13
+for XMECHANISM in MMEJ;do
+    case $XMECHANISM in
+        MMEJ) EXTENDED_MECHANISM_NAME=deletion_MMEJ ;;
+    esac
+    for MH in 2 3 4;do
+        for INDELLENGTH in 25;do
+            for NSIMULATIONS in 2000;do
+                HADES=/mnt/HADES/fabio/thanatos_backup
+                OUTDIR=${HADES}/simulations_100w_big_indel/sims_loop_100w_${XMECHANISM}/mech_${XMECHANISM}_L_${INDELLENGTH}_MH_${MH}/
+                mkdir -p "$OUTDIR"
+                for ISIM in {1..10};do #solo il numero/nome di questa simulazione
+                python git/eMMEJ2/scripts/DSBsimulatorfabio_2.py -r /mnt/HADES/fabio/tests/hgfasta/hg38_clean.fa \
+                -m $EXTENDED_MECHANISM_NAME -o ${OUTDIR}/MH_${MH}_${XMECHANISM}_S_set${ISIM} -n $NSIMULATIONS -l $MH -d ${DISTANCE_SEARCH_MH}
+                done
+            done
+        done
+    done
+done
+
+
+#DETECTION CHE IDENTIFICA LE VARIANT_ID SU REGIONI RIPETUTE
+MAXJOBS=15
+HADES=/mnt/HADES/fabio/thanatos_backup
+
+for XMECHANISM in MMEJ; do
+    for MH in 2 3 4; do
+        for INDELLENGTH in 25; do
+            for NSIMULATIONS in 2000; do
+
+                # stessa cartella usata dalla simulazione (input)
+                INPUT_DIR=${HADES}/simulations_100w_big_indel/sims_loop_100w_${XMECHANISM}/mech_${XMECHANISM}_L_${INDELLENGTH}_MH_${MH}/
+                # cartella parallela per la detection (output)
+                OUTPUT_DIR=${HADES}/simulations_100w_big_indel/det_no_pol_slip/sims_loop_100w_${XMECHANISM}/mech_${XMECHANISM}_L_${INDELLENGTH}_MH_${MH}_det/
+                mkdir -p "$OUTPUT_DIR"
+
+                for ISIM in {1..10}; do
+
+                    NAME=MH_${MH}_${XMECHANISM}_S_set${ISIM}
+
+                    # aspetta finché ci sono troppi job attivi
+                    while [ "$(jobs -rp | wc -l)" -ge "$MAXJOBS" ]; do
+                        sleep 10
+                    done
+
+                    nice -n 19 python git/eMMEJ2/bin/EMmej/RMdetector4.py \
+                        -v "${INPUT_DIR}/${NAME}" \
+                        --ref /mnt/HADES/fabio/tests/hgfasta/hg38_clean.fa \
+                        -o "${OUTPUT_DIR}/${NAME}_det" \
+                        -mhl ${MH} -a -w 100 -fps &
+
+                done
+            done
+        done
+    done
+done
+
+wait
+
+
+#RIMOZIONE POL SLIP CON IL FILTRO
+HADES=/mnt/HADES/fabio/thanatos_backup
+
+for XMECHANISM in MMEJ; do
+    for MH in 2 3 4; do
+        for INDELLENGTH in 25; do
+
+            SIM_DIR=${HADES}/simulations_100w_big_indel/sims_loop_100w_${XMECHANISM}/mech_${XMECHANISM}_L_${INDELLENGTH}_MH_${MH}
+            DET_DIR=${HADES}/simulations_100w_big_indel/det_no_pol_slip/sims_loop_100w_${XMECHANISM}/mech_${XMECHANISM}_L_${INDELLENGTH}_MH_${MH}_det/
+            FILT_DIR=${HADES}/simulations_100w_big_indel/sims_filtered_${XMECHANISM}/mech_${XMECHANISM}_L_${INDELLENGTH}_MH_${MH}
+            mkdir -p "$FILT_DIR"
+
+            for ISIM in {1..10}; do
+                NAME=MH_${MH}_${XMECHANISM}_S_set${ISIM}
+
+                python /home/fabio/git/eMMEJ2/src/filter_sim_by_det.py \
+                    --sim "${SIM_DIR}/${NAME}" \
+                    --det "${DET_DIR}/${NAME}_det" \
+                    --out "${FILT_DIR}/${NAME}"
+            done
+        done
+    done
+done
+
+
+
+for R_MECHANISM in NHEJ RI RS;do
+    case $R_MECHANISM in
+        NHEJ) EXTENDED_MECHANISM_NAME=deletion_NHEJ ;;
+        RI) EXTENDED_MECHANISM_NAME=random_insertion ;;
+        RS) EXTENDED_MECHANISM_NAME=random_substitution ;;
+    esac
+
+    for R_INDELLENGTH in 25;do
+        for NSIMULATIONS in 5000;do
+            HADES=/mnt/HADES/fabio/thanatos_backup
+            OUTDIR=${HADES}/simulations_100w_big_indel/sims_random/sims_loop_${R_MECHANISM}/mech_${R_MECHANISM}_L_${R_INDELLENGTH}/
+            mkdir -p "$OUTDIR"
+            for ISIM in {1..10};do #solo il numero/nome di questa simulazione
+            python git/eMMEJ2/scripts/DSBsimulatorfabio_2.py -r /mnt/HADES/fabio/tests/hgfasta/hg38_clean.fa \
+            -m $EXTENDED_MECHANISM_NAME -o ${OUTDIR}/5K_${R_MECHANISM}_S_set${ISIM} -n $NSIMULATIONS -d "$R_INDELLENGTH" 
+            done
+        done
+    done
+done
+
+#mix delezioni
+HADES=/mnt/HADES/fabio/thanatos_backup
+
+for XMECHANISM in MMEJ DD ID; do
+    for R_MECHANISM in NHEJ; do
+        for MH in 2 3 4; do
+            for INDELLENGTH in 25; do
+                for R_INDELLENGTH in 25; do
+                    for NSIMULATIONS in 1000; do
+
+                        OUTDIR=${HADES}/mixed_sims_det_filtered_100w_big_indel/miste_DEL_100/${XMECHANISM}_MH_${MH}_${R_MECHANISM}
+                        mkdir -p "$OUTDIR"
+
+                        for PROPORTION in 0 0.02 0.25 0.5 0.75 0.98 1; do 
+                            for ISIM in {1..10}; do
+
+                                N_SIM_MECHANISM=$(awk -v n="$NSIMULATIONS" -v p="$PROPORTION" 'BEGIN{printf "%d", int(n*p + 0.5)}')
+                                N_SIM_NHEJ=$((NSIMULATIONS - N_SIM_MECHANISM)) 
+
+                                IN_MECH=${HADES}/simulations_100w_big_indel/sims_filtered_${XMECHANISM}/mech_${XMECHANISM}_L_${INDELLENGTH}_MH_${MH}/MH_${MH}_${XMECHANISM}_S_set${ISIM}_kept.tsv
+                                IN_NHEJ=${HADES}/simulations_100w_big_indel/sims_random/sims_loop_${R_MECHANISM}/mech_${R_MECHANISM}_L_${R_INDELLENGTH}/5K_${R_MECHANISM}_S_set${ISIM}
+                                OUT=${OUTDIR}/${NSIMULATIONS}_${XMECHANISM}_MH${MH}_${INDELLENGTH}L_vs_${R_MECHANISM}_prop${PROPORTION}_set${ISIM}
+
+                                # controllo che gli input esistano
+                                [[ -f $IN_MECH && -f $IN_NHEJ ]] || { echo "Mancano input: $IN_MECH / $IN_NHEJ" >&2; continue; }
+
+                                # > sovrascrive, >> aggiunge
+                                shuf -n "$N_SIM_MECHANISM" "$IN_MECH" > "$OUT"
+                                shuf -n "$N_SIM_NHEJ" "$IN_NHEJ" >> "$OUT"
+
+                            done
+                        done
+                    done
+                done
+            done
+        done
+    done
+done
+
+
+#detection delezioni simultaneo -a -w 100 -m 50
+MAXJOBS=15
+
+for XMECHANISM in MMEJ DD ID; do
+    for R_MECHANISM in NHEJ; do
+        for MH in 2 3 4; do
+            for INDELLENGTH in 25; do
+                for NSIMULATIONS in 1000; do
+                    for PROPORTION in 0 0.02 0.25 0.5 0.75 0.98 1; do
+                        for ISIM in {1..10}; do
+
+                            HADES=/mnt/HADES/fabio/thanatos_backup
+                            OUTPUT_DIR=${HADES}/mixed_sims_det_filtered_100w_big_indel/mixed_DEL_100_det/${XMECHANISM}_MH_${MH}_${R_MECHANISM}_det
+                            INPUT_DIR=${HADES}/mixed_sims_det_filtered_100w_big_indel/miste_DEL_100/${XMECHANISM}_MH_${MH}_${R_MECHANISM}
+                            mkdir -p "$OUTPUT_DIR"
+
+                            NAME=${NSIMULATIONS}_${XMECHANISM}_MH${MH}_${INDELLENGTH}L_vs_${R_MECHANISM}_prop${PROPORTION}_set${ISIM}
+
+                            # aspetta finché ci sono troppi job attivi
+                            while [ "$(jobs -rp | wc -l)" -ge "$MAXJOBS" ]; do
+                                sleep 10
+                            done
+
+                            nice -n 19 python git/eMMEJ2/bin/EMmej/RMdetector3.py \
+                                -v "${INPUT_DIR}/${NAME}" \
+                                --ref /mnt/HADES/fabio/tests/hgfasta/hg38_clean.fa \
+                                -o "${OUTPUT_DIR}/${NAME}_det" \
+                                -mhl ${MH} -a -w 150 -m 50 &
+
+                        done
+                    done
+                done
+            done
+        done
+    done
+done
+
+wait 
+
+
+#EM loop delezioni per hypnos
+MAXJOBS=4
+
+for XMECHANISM in MMEJ DD ID; do
+    for R_MECHANISM in NHEJ; do
+        for MH in 2 3 4; do
+            for INDELLENGTH in 25; do
+                for NSIMULATIONS in 1000; do
+                    for PROPORTION in 0 0.02 0.25 0.5 0.75 0.98 1; do
+                        for ISIM in {1..10}; do
+
+                            HADES=/mnt/HADES/fabio/thanatos_backup
+                            INPUT_DIR=${HADES}/mixed_sims_det_filtered_100w_big_indel/mixed_DEL_100_det/${XMECHANISM}_MH_${MH}_${R_MECHANISM}_det
+                            OUTPUT_DIR=${HADES}/EM_LOOP_filtered_100w_big_indel/EM_LOOP_DEL_100/${XMECHANISM}_MH_${MH}
+                            mkdir -p "$OUTPUT_DIR"
+
+                            NAME=${NSIMULATIONS}_${XMECHANISM}_MH${MH}_${INDELLENGTH}L_vs_${R_MECHANISM}_prop${PROPORTION}_set${ISIM}
+
+                            # aspetta finché ci sono troppi job attivi
+                            while [ "$(jobs -rp | wc -l)" -ge "$MAXJOBS" ]; do
+                                sleep 10
+                            done
+
+                            nice -n 19 Rscript src/EM_11.R \
+                            -i "${INPUT_DIR}/${NAME}_det"  \
+                            -o "${OUTPUT_DIR}/${NAME}_EM" \
+                            --mechanisms ${XMECHANISM} --background ${R_MECHANISM} &
+
+                        done
+                    done
+                done
+            done
+        done
+    done
+done
+
+wait
+
+
+
+
+#mix inserzioni
+HADES=/mnt/HADES/fabio/thanatos_backup
+
+for XMECHANISM in DI II; do
+    for R_MECHANISM in RI; do
+        for MH in 2 3 4; do
+            for INDELLENGTH in 25; do
+                for R_INDELLENGTH in 25; do
+                    for NSIMULATIONS in 1000; do
+
+                        OUTDIR=${HADES}/mixed_sims_det_filtered_100w_big_indel/miste_INS_100/${XMECHANISM}_MH_${MH}_${R_MECHANISM}
+                        mkdir -p "$OUTDIR"
+
+                        for PROPORTION in 0 0.02 0.25 0.5 0.75 0.98 1; do 
+                            for ISIM in {1..10}; do
+
+                                N_SIM_MECHANISM=$(awk -v n="$NSIMULATIONS" -v p="$PROPORTION" 'BEGIN{printf "%d", int(n*p + 0.5)}')
+                                N_SIM_NHEJ=$((NSIMULATIONS - N_SIM_MECHANISM)) 
+
+                                IN_MECH=${HADES}/simulations_100w_big_indel/sims_filtered_${XMECHANISM}/mech_${XMECHANISM}_L_${INDELLENGTH}_MH_${MH}/MH_${MH}_${XMECHANISM}_S_set${ISIM}_kept.tsv
+                                IN_NHEJ=${HADES}/simulations_100w_big_indel/sims_random/sims_loop_${R_MECHANISM}/mech_${R_MECHANISM}_L_${R_INDELLENGTH}/5K_${R_MECHANISM}_S_set${ISIM}
+                                OUT=${OUTDIR}/${NSIMULATIONS}_${XMECHANISM}_MH${MH}_${INDELLENGTH}L_vs_${R_MECHANISM}_prop${PROPORTION}_set${ISIM}
+
+                                # controllo che gli input esistano
+                                [[ -f $IN_MECH && -f $IN_NHEJ ]] || { echo "Mancano input: $IN_MECH / $IN_NHEJ" >&2; continue; }
+
+                                # > sovrascrive, >> aggiunge
+                                shuf -n "$N_SIM_MECHANISM" "$IN_MECH" > "$OUT"
+                                shuf -n "$N_SIM_NHEJ" "$IN_NHEJ" >> "$OUT"
+
+                            done
+                        done
+                    done
+                done
+            done
+        done
+    done
+done
+
+
+#detection inserzioni simultaneo -a -w 100 -m 50
+MAXJOBS=15
+
+for XMECHANISM in DI II; do
+    for R_MECHANISM in RI; do
+        for MH in 2 3 4; do
+            for INDELLENGTH in 25; do
+                for NSIMULATIONS in 1000; do
+                    for PROPORTION in 0 0.02 0.25 0.5 0.75 0.98 1; do
+                        for ISIM in {1..10}; do
+
+                            HADES=/mnt/HADES/fabio/thanatos_backup
+                            OUTPUT_DIR=${HADES}/mixed_sims_det_filtered_100w_big_indel/mixed_INS_100_det/${XMECHANISM}_MH_${MH}_${R_MECHANISM}_det
+                            INPUT_DIR=${HADES}/mixed_sims_det_filtered_100w_big_indel/miste_INS_100/${XMECHANISM}_MH_${MH}_${R_MECHANISM}
+                            mkdir -p "$OUTPUT_DIR"
+
+                            NAME=${NSIMULATIONS}_${XMECHANISM}_MH${MH}_${INDELLENGTH}L_vs_${R_MECHANISM}_prop${PROPORTION}_set${ISIM}
+
+                            # aspetta finché ci sono troppi job attivi
+                            while [ "$(jobs -rp | wc -l)" -ge "$MAXJOBS" ]; do
+                                sleep 10
+                            done
+
+                            nice -n 19 python git/eMMEJ2/bin/EMmej/RMdetector3.py \
+                                -v "${INPUT_DIR}/${NAME}" \
+                                --ref /mnt/HADES/fabio/tests/hgfasta/hg38_clean.fa \
+                                -o "${OUTPUT_DIR}/${NAME}_det" \
+                                -mhl ${MH} -a -w 150 -m 50 & 
+
+                        done
+                    done
+                done
+            done
+        done
+    done
+done
+
+wait 
+
+
+#EM loop inserzioni per hypnos
+MAXJOBS=4
+
+for XMECHANISM in DI II ; do
+    for R_MECHANISM in RI; do
+        for MH in 2 3 4; do
+            for INDELLENGTH in 25; do
+                for NSIMULATIONS in 1000; do
+                    for PROPORTION in 0 0.02 0.25 0.5 0.75 0.98 1; do
+                        for ISIM in {1..10}; do
+
+                            HADES=/mnt/HADES/fabio/thanatos_backup
+                            INPUT_DIR=${HADES}/mixed_sims_det_filtered_100w_big_indel/mixed_INS_100_det/${XMECHANISM}_MH_${MH}_${R_MECHANISM}_det
+                            OUTPUT_DIR=${HADES}/EM_LOOP_filtered_100w_big_indel/EM_LOOP_INS_100/${XMECHANISM}_MH_${MH}
+                            mkdir -p "$OUTPUT_DIR"
+
+                            NAME=${NSIMULATIONS}_${XMECHANISM}_MH${MH}_${INDELLENGTH}L_vs_${R_MECHANISM}_prop${PROPORTION}_set${ISIM}
+
+                            # aspetta finché ci sono troppi job attivi
+                            while [ "$(jobs -rp | wc -l)" -ge "$MAXJOBS" ]; do
+                                sleep 10
+                            done
+
+                            nice -n 19 Rscript src/EM_10.R \
+                            -i "${INPUT_DIR}/${NAME}_det"  \
+                            -o "${OUTPUT_DIR}/${NAME}_EM" \
+                            --mechanisms ${XMECHANISM} --background ${R_MECHANISM} &
+
+                        done
+                    done
+                done
+            done
+        done
+    done
+done
+
+wait
+
+
+#mix SUB 
+HADES=/mnt/HADES/fabio/thanatos_backup
+
+for XMECHANISM in DS IS; do
+    for R_MECHANISM in RS; do
+        for MH in 2 3 4; do
+            for INDELLENGTH in 25; do
+                for R_INDELLENGTH in 25; do
+                    for NSIMULATIONS in 1000; do
+
+                        OUTDIR=${HADES}/mixed_sims_det_filtered_100w_big_indel/miste_SUB_100/${XMECHANISM}_MH_${MH}_${R_MECHANISM}
+                        mkdir -p "$OUTDIR"
+
+                        for PROPORTION in 0 0.02 0.25 0.5 0.75 0.98 1; do 
+                            for ISIM in {1..10}; do
+
+                                N_SIM_MECHANISM=$(awk -v n="$NSIMULATIONS" -v p="$PROPORTION" 'BEGIN{printf "%d", int(n*p + 0.5)}')
+                                N_SIM_NHEJ=$((NSIMULATIONS - N_SIM_MECHANISM)) 
+
+                                IN_MECH=${HADES}/simulations_100w_big_indel/sims_filtered_${XMECHANISM}/mech_${XMECHANISM}_L_${INDELLENGTH}_MH_${MH}/MH_${MH}_${XMECHANISM}_S_set${ISIM}_kept.tsv
+                                IN_NHEJ=${HADES}/simulations_100w_big_indel/sims_random/sims_loop_${R_MECHANISM}/mech_${R_MECHANISM}_L_${R_INDELLENGTH}/5K_${R_MECHANISM}_S_set${ISIM}
+                                OUT=${OUTDIR}/${NSIMULATIONS}_${XMECHANISM}_MH${MH}_${INDELLENGTH}L_vs_${R_MECHANISM}_prop${PROPORTION}_set${ISIM}
+
+                                # controllo che gli input esistano
+                                [[ -f $IN_MECH && -f $IN_NHEJ ]] || { echo "Mancano input: $IN_MECH / $IN_NHEJ" >&2; continue; }
+
+                                # > sovrascrive, >> aggiunge
+                                shuf -n "$N_SIM_MECHANISM" "$IN_MECH" > "$OUT"
+                                shuf -n "$N_SIM_NHEJ" "$IN_NHEJ" >> "$OUT"
+
+                            done
+                        done
+                    done
+                done
+            done
+        done
+    done
+done
+
+
+
+#detection sostituzioni simultaneo -a -w 100 -m 50
+MAXJOBS=8
+
+for XMECHANISM in DS IS; do
+    for R_MECHANISM in RS; do
+        for MH in 2 3 4; do
+            for INDELLENGTH in 25; do
+                for NSIMULATIONS in 1000; do
+                    for PROPORTION in 0 0.02 0.25 0.5 0.75 0.98 1; do
+                        for ISIM in {1..10}; do
+
+                            HADES=/mnt/HADES/fabio/thanatos_backup
+                            OUTPUT_DIR=${HADES}/mixed_sims_det_filtered_100w_big_indel/mixed_SUB_100_det/${XMECHANISM}_MH_${MH}_${R_MECHANISM}_det
+                            INPUT_DIR=${HADES}/mixed_sims_det_filtered_100w_big_indel/miste_SUB_100/${XMECHANISM}_MH_${MH}_${R_MECHANISM}
+                            mkdir -p "$OUTPUT_DIR"
+
+                            NAME=${NSIMULATIONS}_${XMECHANISM}_MH${MH}_${INDELLENGTH}L_vs_${R_MECHANISM}_prop${PROPORTION}_set${ISIM}
+
+                            # aspetta finché ci sono troppi job attivi
+                            while [ "$(jobs -rp | wc -l)" -ge "$MAXJOBS" ]; do
+                                sleep 10
+                            done
+
+                            nice -n 19 python git/eMMEJ2/bin/EMmej/RMdetector3_2.py \
+                                -v "${INPUT_DIR}/${NAME}" \
+                                --ref /mnt/HADES/fabio/tests/hgfasta/hg38_clean.fa \
+                                -o "${OUTPUT_DIR}/${NAME}_det" \
+                                -mhl ${MH} -w 250 -m 50 &
+
+                        done
+                    done
+                done
+            done
+        done
+    done
+done
+
+wait 
+
+
+#EM loop sostituzioni per thanatos
+MAXJOBS=4
+
+for XMECHANISM in DS IS ; do
+    for R_MECHANISM in RS; do
+        for MH in 2 3 4; do
+            for INDELLENGTH in 25; do
+                for NSIMULATIONS in 1000; do
+                    for PROPORTION in 0 0.02 0.25 0.5 0.75 0.98 1; do
+                        for ISIM in {1..10}; do
+
+                            HADES=/mnt/HADES/fabio/thanatos_backup
+                            INPUT_DIR=${HADES}/mixed_sims_det_filtered_100w_big_indel/mixed_SUB_100_det/${XMECHANISM}_MH_${MH}_${R_MECHANISM}_det
+                            OUTPUT_DIR=${HADES}/EM_LOOP_filtered_100w_big_indel/EM_LOOP_SUB_100_det/${XMECHANISM}_MH_${MH}
+                            mkdir -p "$OUTPUT_DIR"
+
+                            NAME=${NSIMULATIONS}_${XMECHANISM}_MH${MH}_${INDELLENGTH}L_vs_${R_MECHANISM}_prop${PROPORTION}_set${ISIM}
+
+                            # aspetta finché ci sono troppi job attivi
+                            while [ "$(jobs -rp | wc -l)" -ge "$MAXJOBS" ]; do
+                                sleep 10
+                            done
+
+                            nice -n 19 Rscript git/eMMEJ2/src/EM_10.R \
+                            -i "${INPUT_DIR}/${NAME}_det"  \
+                            -o "${OUTPUT_DIR}/${NAME}_EM" \
+                            --mechanisms ${XMECHANISM} --background ${R_MECHANISM} &
+
+                        done
+                    done
+                done
+            done
+        done
+    done
+done
+
+wait
+
+
+scp fabio@140.105.153.6:/mnt/HADES/fabio/thanatos_backup/EM_LOOP_filtered_100w_big_indel/EM_LOOP_DEL_100/DD_MH_2/1000* C:\Users\web\Desktop\plot_loop\EM_filtered_same_indel\DD_MH2
+
+scp fabio@140.105.153.6:/mnt/HADES/fabio/thanatos_backup/EM_LOOP_filtered_100w_big_indel/EM_LOOP_DEL_100/DD_MH_3/1000* C:\Users\web\Desktop\plot_loop\EM_filtered_same_indel\DD_MH3
+
+scp fabio@140.105.153.6:/mnt/HADES/fabio/thanatos_backup/EM_LOOP_filtered_100w_big_indel/EM_LOOP_DEL_100/DD_MH_4/1000* C:\Users\web\Desktop\plot_loop\EM_filtered_same_indel\DD_MH4
+
+
+scp fabio@140.105.153.6:/mnt/HADES/fabio/thanatos_backup/EM_LOOP_filtered_100w_big_indel/EM_LOOP_DEL_100/ID_MH_2/1000* C:\Users\web\Desktop\plot_loop\EM_filtered_same_indel\ID_MH2
+
+scp fabio@140.105.153.6:/mnt/HADES/fabio/thanatos_backup/EM_LOOP_filtered_100w_big_indel/EM_LOOP_DEL_100/ID_MH_3/1000* C:\Users\web\Desktop\plot_loop\EM_filtered_same_indel\ID_MH3
+
+scp fabio@140.105.153.6:/mnt/HADES/fabio/thanatos_backup/EM_LOOP_filtered_100w_big_indel/EM_LOOP_DEL_100/ID_MH_4/1000* C:\Users\web\Desktop\plot_loop\EM_filtered_same_indel\ID_MH4
+
+
+scp fabio@140.105.153.6:/mnt/HADES/fabio/thanatos_backup/EM_LOOP_filtered_100w_big_indel/EM_LOOP_DEL_100/MMEJ_MH_2/1000* C:\Users\web\Desktop\plot_loop\EM_filtered_same_indel\MMEJ_MH2
+
+scp fabio@140.105.153.6:/mnt/HADES/fabio/thanatos_backup/EM_LOOP_filtered_100w_big_indel/EM_LOOP_DEL_100/MMEJ_MH_3/1000* C:\Users\web\Desktop\plot_loop\EM_filtered_same_indel\MMEJ_MH3
+
+scp fabio@140.105.153.6:/mnt/HADES/fabio/thanatos_backup/EM_LOOP_filtered_100w_big_indel/EM_LOOP_DEL_100/MMEJ_MH_4/1000* C:\Users\web\Desktop\plot_loop\EM_filtered_same_indel\MMEJ_MH4
+
+
+
+
+scp fabio@140.105.153.6:/mnt/HADES/fabio/thanatos_backup/EM_LOOP_filtered_100w_big_indel/EM_LOOP_INS_100/DI_MH_2/1000* C:\Users\web\Desktop\plot_loop\EM_filtered_same_indel\DI_MH2
+
+scp fabio@140.105.153.6:/mnt/HADES/fabio/thanatos_backup/EM_LOOP_filtered_100w_big_indel/EM_LOOP_INS_100/DI_MH_3/1000* C:\Users\web\Desktop\plot_loop\EM_filtered_same_indel\DI_MH3
+
+scp fabio@140.105.153.6:/mnt/HADES/fabio/thanatos_backup/EM_LOOP_filtered_100w_big_indel/EM_LOOP_INS_100/DI_MH_4/1000* C:\Users\web\Desktop\plot_loop\EM_filtered_same_indel\DI_MH4
+
+
+scp fabio@140.105.153.6:/mnt/HADES/fabio/thanatos_backup/EM_LOOP_filtered_100w_big_indel/EM_LOOP_INS_100/II_MH_2/1000* C:\Users\web\Desktop\plot_loop\EM_filtered_same_indel\II_MH2
+
+scp fabio@140.105.153.6:/mnt/HADES/fabio/thanatos_backup/EM_LOOP_filtered_100w_big_indel/EM_LOOP_INS_100/II_MH_3/1000* C:\Users\web\Desktop\plot_loop\EM_filtered_same_indel\II_MH3
+
+scp fabio@140.105.153.6:/mnt/HADES/fabio/thanatos_backup/EM_LOOP_filtered_100w_big_indel/EM_LOOP_INS_100/II_MH_4/1000* C:\Users\web\Desktop\plot_loop\EM_filtered_same_indel\II_MH4
+
+
+scp fabio@140.105.153.6:/mnt/HADES/fabio/thanatos_backup/EM_LOOP_filtered_100w_big_indel/EM_LOOP_SUB_100_det/DS_MH_2/1000* C:\Users\web\Desktop\plot_loop\EM_filtered_same_indel\DS_MH2
+
+scp fabio@140.105.153.6:/mnt/HADES/fabio/thanatos_backup/EM_LOOP_filtered_100w_big_indel/EM_LOOP_SUB_100_det/DS_MH_3/1000* C:\Users\web\Desktop\plot_loop\EM_filtered_same_indel\DS_MH3
+
+scp fabio@140.105.153.6:/mnt/HADES/fabio/thanatos_backup/EM_LOOP_filtered_100w_big_indel/EM_LOOP_SUB_100_det/DS_MH_4/1000* C:\Users\web\Desktop\plot_loop\EM_filtered_same_indel\DS_MH4
+
+
+scp fabio@140.105.153.6:/mnt/HADES/fabio/thanatos_backup/EM_LOOP_filtered_100w_big_indel/EM_LOOP_SUB_100_det/IS_MH_2/1000* C:\Users\web\Desktop\plot_loop\EM_filtered_same_indel\IS_MH2
+
+scp fabio@140.105.153.6:/mnt/HADES/fabio/thanatos_backup/EM_LOOP_filtered_100w_big_indel/EM_LOOP_SUB_100_det/IS_MH_3/1000* C:\Users\web\Desktop\plot_loop\EM_filtered_same_indel\IS_MH3
+
+scp fabio@140.105.153.6:/mnt/HADES/fabio/thanatos_backup/EM_LOOP_filtered_100w_big_indel/EM_LOOP_SUB_100_det/IS_MH_4/1000* C:\Users\web\Desktop\plot_loop\EM_filtered_same_indel\IS_MH4
+
+
+
+library(data.table)
+library(svglite)
+library(ggplot2)
+library(patchwork)   # install.packages("patchwork") se non è installato
+
+base_dir <- "C:/Users/web/Desktop/plot_loop/EM_filtered_same_indel/"
+out_dir  <- base_dir
+
+# dimensioni (in pollici) di ogni sotto-grafico nella figura combinata
+width_per_plot <- 7
+height_fig     <- 7
+
+
+# ---------------------------------------------------------------------------
+# Costruisce il plot di UN dataset (restituisce il ggplot, non salva nulla)
+# ---------------------------------------------------------------------------
+build_plot <- function(name,
+                       base   = base_dir,
+                       pi_col = "pi_DD") {
+
+  mh_num <- as.integer(sub(".*_MH([0-9]+)$", "\\1", name))
+
+  # cartella del dataset; usa la sottocartella "files" se esiste
+  folder <- file.path(base, name)
+  dir    <- if (dir.exists(file.path(folder, "files"))) file.path(folder, "files") else folder
+
+  pattern <- paste0("^1000_", name, "_.*_prop[0-9.]+_set[0-9]+_EM_paramaters_estimated$")
+  files <- list.files(dir, pattern = pattern, full.names = TRUE)
+
+  if (length(files) == 0) {
+    warning("Nessun file trovato per ", name, " in ", dir)
+    return(NULL)
+  }
+
+  DT <- rbindlist(
+    lapply(files, function(f) {
+      d  <- fread(f, sep = "\t", header = TRUE)
+      nm <- basename(f)
+      d$prop <- as.numeric(sub(".*_prop([0-9.]+)_set.*", "\\1", nm))
+      d$set  <- as.integer(sub(".*_set([0-9]+)_EM.*", "\\1", nm))
+      d
+    }),
+    fill = TRUE
+  )
+
+  if (!pi_col %in% names(DT)) {
+    warning("Colonna ", pi_col, " assente in ", name)
+    return(NULL)
+  }
+
+  setorder(DT, prop, set)
+  DT[, prop_f := factor(prop, levels = sort(unique(prop)))]
+  DT[, est := get(pi_col)]
+  DT[, err := est - prop]
+
+  panel_levels <- c(paste("Estimated", sub("^pi_", "", pi_col), "proportion"), "Error")
+
+  dat_all <- rbind(
+    DT[, .(prop_f, prop, y = est, panel = factor(panel_levels[1], levels = panel_levels))],
+    DT[, .(prop_f, prop, y = err, panel = factor(panel_levels[2], levels = panel_levels))]
+  )
+
+  ref_true <- DT[, .(y = mean(prop)), by = prop_f]
+  ref_true[, panel := factor(panel_levels[1], levels = panel_levels)]
+
+  ggplot(dat_all, aes(x = prop_f, y = y)) +
+    geom_hline(data = data.frame(panel = factor(panel_levels[2], levels = panel_levels), yint = 0),
+               aes(yintercept = yint), colour = "red", linewidth = 0.8, linetype = "dashed") +
+    geom_violin(fill = "grey85", colour = "grey40", scale = "width", trim = TRUE, width = 0.7) +
+    geom_jitter(width = 0.08, height = 0, size = 2.2, alpha = 0.8) +
+    stat_summary(fun = mean, geom = "point", shape = 95, size = 10, colour = "blue") +
+    geom_point(data = ref_true, aes(x = prop_f, y = y), shape = 95, size = 12, colour = "red") +
+    facet_wrap(~ panel, ncol = 1, scales = "free_y", strip.position = "left") +
+    scale_y_continuous(expand = expansion(mult = 0.05)) +
+    labs(x = paste("Simulated", sub("^pi_", "", pi_col), "Proportion"),
+         y = NULL,
+         title = paste0("MH", mh_num)) +
+    theme_bw() +
+    theme(strip.placement = "outside",
+          strip.background = element_blank(),
+          strip.text.y.left = element_text(angle = 90, size = 11))
+}
+
+
+# ---------------------------------------------------------------------------
+# Rileva i dataset (cartelle *_MH<n>) e li raggruppa per meccanismo
+# ---------------------------------------------------------------------------
+datasets <- list.dirs(base_dir, recursive = FALSE, full.names = FALSE)
+datasets <- grep("_MH[0-9]+$", datasets, value = TRUE)   # es. "DS_MH2", "DS_MH3", ...
+
+if (length(datasets) == 0) {
+  stop("Nessuna cartella *_MH<n> trovata in ", base_dir)
+}
+
+mech_of <- sub("_MH[0-9]+$", "", datasets)
+mh_of   <- as.integer(sub(".*_MH([0-9]+)$", "\\1", datasets))
+
+# ordina per meccanismo e poi per lunghezza MH (MH2, MH3, MH4, ... in ordine numerico)
+ord      <- order(mech_of, mh_of)
+datasets <- datasets[ord]
+mech_of  <- mech_of[ord]
+
+by_mech <- split(datasets, factor(mech_of, levels = unique(mech_of)))
+print(by_mech)   # controlla il raggruppamento
+
+
+# ---------------------------------------------------------------------------
+# Un plot per ogni dataset, poi UNA figura per meccanismo
+# ---------------------------------------------------------------------------
+plots <- lapply(names(by_mech), function(m) {
+  pl <- lapply(by_mech[[m]], build_plot, pi_col = paste0("pi_", m))
+  names(pl) <- by_mech[[m]]
+  pl[!vapply(pl, is.null, logical(1))]   # scarta i dataset senza dati
+})
+names(plots) <- names(by_mech)
+
+for (m in names(plots)) {
+  pl <- plots[[m]]
+  if (length(pl) == 0) next
+
+  fig <- wrap_plots(pl, nrow = 1) +
+    plot_annotation(title = paste("Proportion estimation and error of", m))
+
+  #ggsave(file.path(out_dir, paste0("Plot_", m, ".pdf")), fig,
+         #width = width_per_plot * length(pl), height = height_fig)
+  ggsave(file.path(out_dir, paste0("Plot_", m, ".svg")), fig,
+         width = width_per_plot * length(pl), height = height_fig)
+}
+
+
